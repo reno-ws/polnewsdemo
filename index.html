@@ -15,6 +15,7 @@
   .item.prio { background: #f5f7ff; }
   .item a { font-size: 16px; color: #1a3e8c; text-decoration: none; }
   .item a:hover { text-decoration: underline; }
+  #failed { color: #a33; font-size: 13px; margin-top: 20px; }
   .meta { color: #777; font-size: 13px; margin-top: 4px; }
 </style>
 </head>
@@ -35,6 +36,7 @@
 
 <div id="status">Lade …</div>
 <div id="results"></div>
+<div id="failed"></div>
 
 <script>
 // Hilfsdienste ("Proxys"), über die der Browser Google News abrufen darf.
@@ -135,42 +137,69 @@ function render(articles) {
   return list.length;
 }
 
-// 5) Alle Suchen gleichzeitig starten; Treffer erscheinen sofort, sobald sie da sind
+// 5) Eine Suche bis zu 3-mal versuchen, mit kurzer Pause dazwischen
+const MAX_ATTEMPTS = 3;
+const PARALLEL = 4;  // höchstens 4 Suchen gleichzeitig, damit die Proxys nicht überlastet werden
+
+const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+async function fetchWithRetry(query, days) {
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    try {
+      return await fetchQuery(query, days);
+    } catch (e) {
+      if (attempt === MAX_ATTEMPTS) throw e;
+      await wait(1500 * attempt);
+    }
+  }
+}
+
+// 6) Alle Suchen ausführen; Treffer erscheinen sofort, sobald sie da sind
 async function run() {
   const days = Number(document.getElementById("days").value);
   const status = document.getElementById("status");
   const button = document.getElementById("refresh");
+  const failedBox = document.getElementById("failed");
   document.getElementById("results").innerHTML = "";
+  failedBox.textContent = "";
   button.disabled = true;
 
   const queries = buildQueries();
   const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
   const articles = new Map();
-  let done = 0, errors = 0, count = 0;
+  const failed = [];
+  let done = 0, count = 0, next = 0;
 
   status.textContent = "Suche läuft … (0 von " + queries.length + " fertig)";
 
-  await Promise.all(queries.map(async q => {
-    try {
-      for (const a of await fetchQuery(q, days)) {
-        if (a.date.getTime() >= cutoff && !articles.has(a.title)) {
-          articles.set(a.title, a);
+  async function worker() {
+    while (next < queries.length) {
+      const q = queries[next++];
+      try {
+        for (const a of await fetchWithRetry(q, days)) {
+          if (a.date.getTime() >= cutoff && !articles.has(a.title)) {
+            articles.set(a.title, a);
+          }
         }
+      } catch (e) {
+        failed.push(q);
       }
-    } catch (e) {
-      errors++;
-      console.warn("Suche fehlgeschlagen:", q, e);
+      done++;
+      count = render(articles);
+      status.textContent = "Suche läuft … (" + done + " von " + queries.length + " fertig) · " +
+        count + " Artikel bisher";
     }
-    done++;
-    count = render(articles);
-    status.textContent = "Suche läuft … (" + done + " von " + queries.length + " fertig) · " +
-      count + " Artikel bisher";
-  }));
+  }
+
+  await Promise.all(Array.from({ length: PARALLEL }, worker));
 
   const now = new Date().toLocaleString("de-CH");
   status.textContent = count + " Artikel gefunden · Stand " + now + " · ★ = Prioritätsquelle" +
-    (errors ? " · ⚠ " + errors + " von " + queries.length + " Suchen fehlgeschlagen" : "");
+    (failed.length ? " · ⚠ " + failed.length + " von " + queries.length + " Suchen fehlgeschlagen" : "");
   if (count === 0) document.getElementById("results").textContent = "Keine Artikel gefunden.";
+  if (failed.length) {
+    failedBox.textContent = "Nicht durchsucht (bitte «Aktualisieren» klicken): " + failed.join("  |  ");
+  }
   button.disabled = false;
 }
 
