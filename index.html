@@ -98,7 +98,7 @@
     max-height: 0; opacity: 0; transform: translateY(40px);
     transition: max-height .5s ease, opacity .4s ease, transform .5s ease; }
   .reaction.show { max-height: 260px; opacity: 1; transform: translateY(0); }
-  .reaction img { width: 220px; max-width: 100%; border-radius: 8px; margin-top: 10px; }
+  .reaction img { width: auto; height: auto; max-width: 100%; max-height: 230px; border-radius: 8px; margin-top: 10px; }
 
   /* Abstimmen */
   .vote { display: flex; flex-direction: column; align-items: center; width: 44px; flex-shrink: 0; }
@@ -112,6 +112,20 @@
   .vote .score.neg { color: var(--red); }
   .voters { color: var(--grey-600); font-size: 12px; margin-top: 4px; }
   .rank { font-size: 20px; font-weight: 700; color: var(--grey-300); width: 28px; text-align: right; flex-shrink: 0; }
+
+  /* Tastatur-Fokus sichtbar */
+  button:focus-visible, .card-body:focus-visible { outline: 2px solid var(--red); outline-offset: 2px; }
+  /* Touch-Geräte: Abstimm-Buttons mindestens 44 x 44 px */
+  @media (pointer: coarse) {
+    .vote { width: 56px; }
+    .vote button { min-width: 44px; min-height: 44px; font-size: 18px; }
+  }
+  /* Wenig Bewegung gewünscht: keine Animationen */
+  @media (prefers-reduced-motion: reduce) {
+    .reaction, .card { transition: none; }
+    .reaction { transform: none; }
+    .status.busy::before { animation: none; }
+  }
 
   footer { text-align: center; color: var(--grey-600); font-size: 12px; padding: 0 24px 30px; }
 
@@ -155,13 +169,13 @@
     </section>
 
     <section class="toolbar">
-      <input type="search" id="filter" placeholder="Ergebnisse filtern, z. B. Stadtwerk oder NZZ …">
-      <select id="days">
+      <input type="search" id="filter" aria-label="Ergebnisse filtern" placeholder="Ergebnisse filtern, z. B. Stadtwerk oder NZZ …">
+      <select id="days" aria-label="Zeitraum">
         <option value="1">Letzte 24 Stunden</option>
         <option value="3">Letzte 3 Tage</option>
         <option value="7">Letzte 7 Tage</option>
       </select>
-      <select id="sort">
+      <select id="sort" aria-label="Sortierung">
         <option value="prio">Sortierung: Quelle &amp; Zeit</option>
         <option value="votes">Sortierung: Team-Bewertung</option>
       </select>
@@ -181,12 +195,21 @@
   </section>
 </main>
 
-<footer>Quelle: Bing News · Es werden nur Schlagzeilen angezeigt; die Artikel öffnen sich beim jeweiligen Medium.</footer>
+<footer>Quelle: Bing News · Es werden nur Schlagzeilen angezeigt; die Artikel öffnen sich beim jeweiligen Medium. · <span id="ver"></span></footer>
 
 <script type="module">
+// ---------------------------------------------------------------------
+// Sicherheitsnetz: Fehler werden gesammelt (für Tests: window.__errors muss leer bleiben)
+// ---------------------------------------------------------------------
+window.__errors = [];
+window.addEventListener("error", e => { window.__errors.push(String(e.message || e.error)); console.error(e.message || e.error); });
+window.addEventListener("unhandledrejection", e => { window.__errors.push(String(e.reason?.message || e.reason)); console.error(e.reason); });
+
 // =====================================================================
 // EINSTELLUNGEN – hier Suchbegriffe und Quellen anpassen
 // =====================================================================
+const APP_VERSION = "3.0";                 // wird im Footer angezeigt: so sieht man, welche Datei live ist
+const FEATURES = { gifReactions: true };   // false = GIFs aus, alles andere bleibt unverändert
 const CONFIG = {
   organisation: "Stadt Winterthur",
   context_word: "Winterthur",
@@ -251,11 +274,27 @@ const GIF_DOWN = "gifs/yougotthis-beyonce.gif";
 const GIF_SECONDS = 3.5;   // so lange bleibt das GIF sichtbar
 // =====================================================================
 
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-import { getFirestore, collection, doc, setDoc, onSnapshot, deleteField, query, where } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+// Firebase wird erst in startFirebase() geladen (feste Version). Ist das Netz blockiert,
+// funktioniert die News-Suche trotzdem; nur das Abstimmen ist dann nicht verfügbar.
+const FIREBASE_BASE = "https://www.gstatic.com/firebasejs/10.12.2/";
+let FS = null;   // Firestore-Funktionen, sobald geladen
+
+// Browser-Speicher geschützt (privates Fenster / blockierter oder voller Speicher)
+const store = {
+  get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
+  set(k, v) { try { localStorage.setItem(k, v); return true; } catch (e) { return false; } }
+};
+
+// Nur http(s)-Links zulassen (Schutz vor javascript:-Adressen aus Fremddaten)
+function safeUrl(u) {
+  try {
+    const x = new URL(u);
+    return (x.protocol === "http:" || x.protocol === "https:") ? x.href : "#";
+  } catch (e) { return "#"; }
+}
 
 const $ = id => document.getElementById(id);
+$("ver").textContent = "Version " + APP_VERSION;
 
 $("org").textContent = CONFIG.organisation;
 document.title = "Medienmonitoring " + CONFIG.organisation;
@@ -274,9 +313,9 @@ let myId = null;        // anonyme Kennung dieses Browsers
 let votesAll = {};      // Artikel-ID -> Daten aus Firebase (letzte 7 Tage)
 
 // Name im Browser merken
-$("myName").value = localStorage.getItem("newsmonitor_name") || "";
+$("myName").value = store.get("newsmonitor_name") || "";
 $("myName").addEventListener("input", () => {
-  localStorage.setItem("newsmonitor_name", $("myName").value.trim());
+  store.set("newsmonitor_name", $("myName").value.trim());
   refreshViews();
 });
 const myName = () => $("myName").value.trim();
@@ -311,9 +350,17 @@ function myVote(id) {
 
 async function startFirebase() {
   try {
+    const [appMod, authMod, fsMod] = await Promise.all([
+      import(FIREBASE_BASE + "firebase-app.js"),
+      import(FIREBASE_BASE + "firebase-auth.js"),
+      import(FIREBASE_BASE + "firebase-firestore.js")
+    ]);
+    const { initializeApp } = appMod;
+    const { getAuth, signInAnonymously, onAuthStateChanged } = authMod;
+    FS = fsMod;
     const app = initializeApp(FIREBASE_CONFIG);
     const auth = getAuth(app);
-    db = getFirestore(app);
+    db = FS.getFirestore(app);
 
     onAuthStateChanged(auth, user => {
       if (!user) return;
@@ -321,7 +368,7 @@ async function startFirebase() {
       showNote("");
       // Live-Verbindung: jede Stimme im Team erscheint sofort bei allen
       const since = new Date(Date.now() - MAX_DAYS * 24 * 60 * 60 * 1000).toISOString();
-      onSnapshot(query(collection(db, "votes"), where("published", ">=", since)), snap => {
+      FS.onSnapshot(FS.query(FS.collection(db, "votes"), FS.where("published", ">=", since)), snap => {
         votesAll = {};
         snap.forEach(d => votesAll[d.id] = d.data());
         refreshViews();
@@ -338,77 +385,102 @@ async function startFirebase() {
 
 // Stimme abgeben: +1 oder -1. Nochmals klicken nimmt die Stimme zurück.
 async function vote(a, value) {
-  if (!db || !myId) return;
+  if (!db || !myId || !FS) return false;
   if (!myName()) {
     alert("Bitte oben rechts zuerst Ihren Namen eingeben.");
     $("myName").focus();
-    return;
+    return false;
   }
   const id = articleId(a);
   const remove = myVote(id) === value;
   try {
-    await setDoc(doc(db, "votes", id), {
+    await FS.setDoc(FS.doc(db, "votes", id), {
       title: a.title,
       link: a.link,
       source: a.source,
       sourceUrl: a.sourceUrl || "",
       published: a.date.toISOString(),
-      votes: { [myId]: remove ? deleteField() : value },
-      names: { [myId]: remove ? deleteField() : myName() }
+      votes: { [myId]: remove ? FS.deleteField() : value },
+      names: { [myId]: remove ? FS.deleteField() : myName() }
     }, { merge: true });
+    return true;
   } catch (e) {
     showNote("Stimme konnte nicht gespeichert werden: " + e.message);
+    return false;
   }
 }
 
 // ---------------------------------------------------------------------
 // GIF-Reaktion
-// Die Karten werden nach jeder Stimme neu gezeichnet (Live-Update von Firebase).
-// Darum merken wir uns, welche Karte gerade ein GIF zeigt, damit es dabei nicht verschwindet.
+// Nach jeder Stimme zeichnet Firebase alle Karten neu. Darum merken wir uns pro Artikel,
+// welches GIF gerade läuft, und bauen es in der neuen Karte wieder auf.
 // ---------------------------------------------------------------------
-let reaction = null;      // { id, gif, until }
-let reactionTimer = null;
+const SLIDE_MS = 600;           // Dauer der Hoch-/Runter-Animation
+const reactions = new Map();    // Artikel-ID -> { gif, alt, start, timer }
 
-function playReaction(card, id, gif) {
-  reaction = { id, gif, until: Date.now() + GIF_SECONDS * 1000 };
-  const box = card.querySelector(".reaction");
-  const img = box.querySelector("img");
-  img.src = gif;
-  box.classList.remove("show");
-  void box.offsetWidth;                 // Animation neu starten
-  requestAnimationFrame(() => box.classList.add("show"));
-  clearTimeout(reactionTimer);
-  reactionTimer = setTimeout(hideReaction, GIF_SECONDS * 1000);
+const canVote = () => !!(db && myId && FS && myName());
+
+function reactionBoxes(id) {
+  return document.querySelectorAll('.card[data-id="' + id + '"] .reaction');
 }
 
-function hideReaction() {
-  if (!reaction) return;
-  const id = reaction.id;
-  reaction = null;
-  document.querySelectorAll('.card[data-id="' + id + '"] .reaction.show').forEach(box => {
-    box.classList.remove("show");     // fährt wieder nach unten weg
+function slideIn(box, gif, alt) {
+  const img = box.querySelector("img");
+  img.alt = alt;
+  img.src = gif;
+  box.classList.remove("show");
+  void box.offsetWidth;                                   // Startzustand festschreiben
+  const token = box._token = {};                          // wird von endReaction() ungültig gemacht
+  requestAnimationFrame(() => requestAnimationFrame(() => { if (box._token === token) box.classList.add("show"); }));
+}
+
+function playReaction(id, gif, alt) {
+  if (!FEATURES.gifReactions) return;
+  const old = reactions.get(id);
+  if (old) clearTimeout(old.timer);
+  reactions.set(id, { gif, alt, start: Date.now(), timer: setTimeout(() => endReaction(id), GIF_SECONDS * 1000) });
+  reactionBoxes(id).forEach(box => slideIn(box, gif, alt));
+}
+
+function endReaction(id) {
+  const r = reactions.get(id);
+  if (!r) return;
+  clearTimeout(r.timer);
+  reactions.delete(id);
+  reactionBoxes(id).forEach(box => {
+    box._token = null;                                    // ein noch ausstehendes Einblenden abbrechen
+    box.classList.remove("show");                         // fährt wieder nach unten weg
     setTimeout(() => {
       if (!box.classList.contains("show")) box.querySelector("img").removeAttribute("src");
-    }, 600);
+    }, SLIDE_MS);
   });
 }
 
+// GIF-Bereich einer Karte; läuft für diesen Artikel gerade ein GIF, wird es weitergeführt
 function reactionBox(id) {
   const box = document.createElement("div");
   box.className = "reaction";
   const img = document.createElement("img");
   img.alt = "";
   box.append(img);
-  // Falls die Karte neu gezeichnet wird, während das GIF läuft: sichtbar lassen
-  if (reaction && reaction.id === id && Date.now() < reaction.until) {
-    img.src = reaction.gif;
-    box.classList.add("show");
+  const r = reactions.get(id);
+  if (r) {
+    if (Date.now() - r.start < SLIDE_MS) slideIn(box, r.gif, r.alt);   // Animation läuft noch: neu starten
+    else { img.alt = r.alt; img.src = r.gif; box.classList.add("show"); }
   }
   return box;
 }
 
+// Stimme abgeben; GIF sofort zeigen, aber nur wenn die Stimme wirklich abgegeben (nicht zurückgenommen) wird
+function onVote(a, value, gif, alt) {
+  const id = articleId(a);
+  const adding = canVote() && myVote(id) !== value;
+  if (adding) playReaction(id, gif, alt);
+  vote(a, value).then(ok => { if (!ok && adding) endReaction(id); });
+}
+
 // Die Abstimm-Spalte (▲ Zahl ▼) für eine Karte bauen
-function voteBox(a, card) {
+function voteBox(a) {
   const id = articleId(a);
   const box = document.createElement("div");
   box.className = "vote";
@@ -416,6 +488,8 @@ function voteBox(a, card) {
   up.className = "up" + (myVote(id) === 1 ? " on" : "");
   up.textContent = "▲";
   up.title = "Relevant";
+  up.setAttribute("aria-label", "Relevant");
+  up.setAttribute("aria-pressed", myVote(id) === 1 ? "true" : "false");
   const score = document.createElement("div");
   const s = scoreOf(id);
   score.className = "score" + (s > 0 ? " pos" : s < 0 ? " neg" : "");
@@ -424,18 +498,11 @@ function voteBox(a, card) {
   down.className = "down" + (myVote(id) === -1 ? " on" : "");
   down.textContent = "▼";
   down.title = "Nicht relevant";
+  down.setAttribute("aria-label", "Nicht relevant");
+  down.setAttribute("aria-pressed", myVote(id) === -1 ? "true" : "false");
   up.disabled = down.disabled = !(db && myId);
-
-  // GIF nur zeigen, wenn eine Stimme abgegeben (nicht zurückgenommen) wird
-  up.onclick = () => {
-    if (myName() && myVote(id) !== 1) playReaction(card, id, GIF_UP);
-    vote(a, 1);
-  };
-  down.onclick = () => {
-    if (myName() && myVote(id) !== -1) playReaction(card, id, GIF_DOWN);
-    vote(a, -1);
-  };
-
+  up.onclick = () => onVote(a, 1, GIF_UP, "Reaktion: relevant");
+  down.onclick = () => onVote(a, -1, GIF_DOWN, "Reaktion: nicht relevant");
   box.append(up, score, down);
   return box;
 }
@@ -494,7 +561,7 @@ async function fetchQuery(q, signal) {
       source: item.getElementsByTagName("News:Source")[0]?.textContent || host,
       sourceUrl: host
     };
-  });
+  }).filter(a => a.title && !isNaN(a.date.getTime()));   // Treffer ohne Titel/gültiges Datum können nicht angezeigt oder bewertet werden
 }
 
 function isPriority(a) {
@@ -532,11 +599,11 @@ function buildCard(a, rank) {
     r.textContent = rank;
     card.append(r);
   }
-  card.append(voteBox(a, card));
+  card.append(voteBox(a));
 
   const body = document.createElement("a");
   body.className = "card-body";
-  body.href = a.link;
+  body.href = safeUrl(a.link);
   body.target = "_blank";
   body.rel = "noopener";
 
@@ -601,7 +668,9 @@ function render(articles) {
   if (list.length === 0) {
     const empty = document.createElement("div");
     empty.className = "empty";
-    empty.textContent = inPeriod.length ? "Kein Artikel passt zum Filter." : "Keine Artikel gefunden.";
+    empty.textContent = inPeriod.length ? "Kein Artikel passt zum Filter."
+      : lastArticles.length ? "Keine Artikel im gewählten Zeitraum (" + lastArticles.length + " ältere Treffer). Wählen Sie einen längeren Zeitraum."
+      : "Keine Artikel gefunden: Die Suche hat 0 Treffer geliefert.";
     results.append(empty);
   }
 }
@@ -664,10 +733,13 @@ function showStatus(time, failedCount, total, fromCache) {
 
 function loadCache() {
   try {
-    const data = JSON.parse(localStorage.getItem(cacheKey()));
-    if (!data || !data.articles?.length) return null;   // leere Ergebnisse nie aus dem Speicher zeigen
-    data.articles.forEach(a => a.date = new Date(a.date));
-    return data;
+    const data = JSON.parse(store.get(cacheKey()) || "null");
+    if (!data || typeof data.time !== "number" || !Array.isArray(data.articles)) return null;
+    data.articles = data.articles
+      .filter(a => a && typeof a.title === "string")
+      .map(a => ({ ...a, date: new Date(a.date) }))
+      .filter(a => !isNaN(a.date.getTime()));
+    return data.articles.length ? data : null;   // leere oder kaputte Daten nie anzeigen
   } catch (e) {
     return null;
   }
@@ -722,7 +794,7 @@ async function run() {
 
   const list = [...articles.values()];
   if (list.length > 0) {
-    localStorage.setItem(cacheKey(), JSON.stringify({ time: Date.now(), articles: list }));
+    store.set(cacheKey(), JSON.stringify({ time: Date.now(), articles: list }));
     render(list);
   } else if (previous) {
     render(previous.articles);  // Suche fehlgeschlagen: alte Ergebnisse behalten
@@ -730,6 +802,9 @@ async function run() {
     render([]);
   }
   showStatus(Date.now(), failed.length, queries.length, false);
+  if (list.length === 0 && failed.length === 0) {
+    $("failed").textContent = "Hinweis: Alle " + queries.length + " Suchen wurden vom Worker beantwortet, enthielten aber 0 Treffer.";
+  }
   if (failed.length) {
     $("failed").textContent = "Ohne Antwort (nochmals «Aktualisieren» klicken): " + failed.join("  |  ");
   }
