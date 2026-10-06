@@ -169,12 +169,12 @@
 
   <!-- ===== Ansicht 2: Team-Ranking ===== -->
   <section id="view-ranking" class="hidden">
-    <div class="status ok" id="rankingInfo">Alle bewerteten Artikel im gewählten Zeitraum, sortiert nach Stimmen. Aktualisiert sich live.</div>
+    <div class="status ok" id="rankingInfo">Alle bewerteten Artikel im gewählten Zeitraum, sortiert nach Stimmen.</div>
     <div id="ranking"></div>
   </section>
 </main>
 
-<footer>Quelle: Google News · Es werden nur Schlagzeilen angezeigt; die Artikel öffnen sich beim jeweiligen Medium.</footer>
+<footer>Quelle: Bing News · Es werden nur Schlagzeilen angezeigt; die Artikel öffnen sich beim jeweiligen Medium.</footer>
 
 <script type="module">
 // =====================================================================
@@ -217,6 +217,9 @@ const CONFIG = {
   days_back: 7
 };
 
+// Eigener Mini-Proxy (Cloudflare Worker), der Bing News abfragt
+const WORKER_URL = "https://winti-news.res-nobs.workers.dev/";
+
 // ---------------------------------------------------------------------
 // FIREBASE – Verbindung zum Projekt "winti-medienschau"
 // ---------------------------------------------------------------------
@@ -229,11 +232,11 @@ const FIREBASE_CONFIG = {
   appId: "1:942108559475:web:ab271583a7d831caf88206"
 };
 
-// So lange wartet die Suche maximal auf die Hilfsdienste (Sekunden)
-const DEADLINE_SECONDS = 30;
+// So lange wartet die Suche maximal (Sekunden)
+const DEADLINE_SECONDS = 15;
 
 // Ergebnisse werden so lange im Browser gespeichert (in Minuten)
-const CACHE_MINUTES = 60;
+const CACHE_MINUTES = 30;
 // =====================================================================
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
@@ -241,13 +244,6 @@ import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gsta
 import { getFirestore, collection, doc, setDoc, onSnapshot, deleteField, query, where } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 const $ = id => document.getElementById(id);
-
-// Hilfsdienste ("Proxys"), über die der Browser Google News abrufen darf.
-const PROXIES = [
-  url => "https://corsproxy.io/?url=" + encodeURIComponent(url),
-  url => "https://api.allorigins.win/raw?url=" + encodeURIComponent(url),
-  url => "https://api.codetabs.com/v1/proxy?quest=" + encodeURIComponent(url)
-];
 
 $("org").textContent = CONFIG.organisation;
 document.title = "Medienmonitoring " + CONFIG.organisation;
@@ -263,7 +259,7 @@ const MAX_DAYS = 7;
 
 let db = null;
 let myId = null;        // anonyme Kennung dieses Browsers
-let votesToday = {};    // Artikel-ID -> Daten aus Firebase (letzte 7 Tage)
+let votesAll = {};      // Artikel-ID -> Daten aus Firebase (letzte 7 Tage)
 
 // Name im Browser merken
 $("myName").value = localStorage.getItem("newsmonitor_name") || "";
@@ -293,12 +289,12 @@ function articleId(a) {
 }
 
 function scoreOf(id) {
-  const v = votesToday[id]?.votes || {};
+  const v = votesAll[id]?.votes || {};
   return Object.values(v).reduce((sum, x) => sum + x, 0);
 }
 
 function myVote(id) {
-  return votesToday[id]?.votes?.[myId] || 0;
+  return votesAll[id]?.votes?.[myId] || 0;
 }
 
 async function startFirebase() {
@@ -314,8 +310,8 @@ async function startFirebase() {
       // Live-Verbindung: jede Stimme im Team erscheint sofort bei allen
       const since = new Date(Date.now() - MAX_DAYS * 24 * 60 * 60 * 1000).toISOString();
       onSnapshot(query(collection(db, "votes"), where("published", ">=", since)), snap => {
-        votesToday = {};
-        snap.forEach(d => votesToday[d.id] = d.data());
+        votesAll = {};
+        snap.forEach(d => votesAll[d.id] = d.data());
         refreshViews();
       }, err => showNote("Firebase-Fehler beim Lesen: " + err.message));
     });
@@ -338,10 +334,9 @@ async function vote(a, value) {
   }
   const id = articleId(a);
   const remove = myVote(id) === value;
-  const ref = doc(db, "votes", id);
   try {
-    await setDoc(ref, {
-      title: cleanTitle(a),
+    await setDoc(doc(db, "votes", id), {
+      title: a.title,
       link: a.link,
       source: a.source,
       sourceUrl: a.sourceUrl || "",
@@ -379,7 +374,7 @@ function voteBox(a) {
 }
 
 function voterLine(id) {
-  const data = votesToday[id];
+  const data = votesAll[id];
   if (!data?.votes) return "";
   return Object.entries(data.votes)
     .map(([uid, v]) => (v > 0 ? "▲ " : "▼ ") + (data.names?.[uid] || "Unbekannt"))
@@ -387,14 +382,15 @@ function voterLine(id) {
 }
 
 // =====================================================================
-// TEIL B: News suchen
+// TEIL B: News suchen (über den eigenen Worker bei Bing News)
 // =====================================================================
 
+// Suchanfragen in Gruppen zu 3 Begriffen (Bing liefert pro Suche nur wenige Treffer)
 function buildQueries(full) {
   const quote = t => '"' + t + '"';
   const queries = [];
-  for (let i = 0; i < CONFIG.direct_terms.length; i += 6) {
-    queries.push(CONFIG.direct_terms.slice(i, i + 6).map(quote).join(" OR "));
+  for (let i = 0; i < CONFIG.direct_terms.length; i += 3) {
+    queries.push(CONFIG.direct_terms.slice(i, i + 3).map(quote).join(" OR "));
   }
   if (full) {
     for (let i = 0; i < CONFIG.context_terms.length; i += 3) {
@@ -405,40 +401,31 @@ function buildQueries(full) {
   return queries;
 }
 
-const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
-
-// Eine Suche so lange wiederholen, bis sie klappt oder das Zeitlimit erreicht ist
-async function fetchQuery(query, days, signal) {
-  for (let attempt = 1; ; attempt++) {
-    try {
-      return await fetchOnce(query, days, signal);
-    } catch (e) {
-      if (signal.aborted) throw e;
-      await wait(1000 * attempt);
-    }
+// Bing verpackt den Artikel-Link in eine Weiterleitung; hier holen wir die echte Adresse heraus
+function realUrl(bingLink) {
+  try {
+    return new URL(bingLink).searchParams.get("url") || bingLink;
+  } catch (e) {
+    return bingLink;
   }
 }
 
-// Alle Proxys gleichzeitig fragen; die erste gültige Antwort zählt
-async function fetchOnce(query, days, signal) {
-  const url = "https://news.google.com/rss/search?q=" +
-    encodeURIComponent(query + " when:" + days + "d") + "&hl=de&gl=CH&ceid=CH:de";
-  const text = await Promise.any(PROXIES.map(async proxy => {
-    const response = await fetch(proxy(url), { signal });
-    if (!response.ok) throw new Error("HTTP " + response.status);
-    const t = await response.text();
-    if (!t.includes("<rss")) throw new Error("Keine gültige Antwort");
-    return t;
-  }));
+async function fetchQuery(q, signal) {
+  const response = await fetch(WORKER_URL + "?q=" + encodeURIComponent(q), { signal });
+  if (!response.ok) throw new Error("HTTP " + response.status);
+  const text = await response.text();
+  if (!text.includes("<rss")) throw new Error("Keine gültige Antwort");
   const xml = new DOMParser().parseFromString(text, "text/xml");
-  return [...xml.querySelectorAll("item")].map(item => {
-    const source = item.querySelector("source");
+  return [...xml.getElementsByTagName("item")].map(item => {
+    const link = realUrl(item.getElementsByTagName("link")[0]?.textContent || "");
+    let host = "";
+    try { host = new URL(link).hostname; } catch (e) {}
     return {
-      title: item.querySelector("title")?.textContent || "",
-      link: item.querySelector("link")?.textContent || "",
-      date: new Date(item.querySelector("pubDate")?.textContent),
-      source: source ? source.textContent : "",
-      sourceUrl: source ? source.getAttribute("url") || "" : ""
+      title: item.getElementsByTagName("title")[0]?.textContent || "",
+      link: link,
+      date: new Date(item.getElementsByTagName("pubDate")[0]?.textContent),
+      source: item.getElementsByTagName("News:Source")[0]?.textContent || host,
+      sourceUrl: host
     };
   });
 }
@@ -455,17 +442,15 @@ function timeAgo(date) {
   return date.toLocaleDateString("de-CH");
 }
 
-// Google hängt " - Quelle" an den Titel an; das entfernen wir für die Anzeige
-function cleanTitle(a) {
-  const suffix = " - " + a.source;
-  return a.title.endsWith(suffix) ? a.title.slice(0, -suffix.length) : a.title;
-}
-
 // =====================================================================
 // TEIL C: Anzeige
 // =====================================================================
 
 let lastArticles = [];
+
+function cutoffDate() {
+  return Date.now() - Number($("days").value) * 24 * 60 * 60 * 1000;
+}
 
 // Eine Artikelkarte bauen (wird in beiden Ansichten verwendet)
 function buildCard(a, rank) {
@@ -507,7 +492,7 @@ function buildCard(a, rank) {
 
   const title = document.createElement("div");
   title.className = "card-title";
-  title.textContent = cleanTitle(a);
+  title.textContent = a.title;
   body.append(top, title);
 
   const voters = voterLine(id);
@@ -526,27 +511,28 @@ function render(articles) {
   lastArticles = [...articles];
   const filter = $("filter").value.trim().toLowerCase();
   const byVotes = $("sort").value === "votes";
+  const cutoff = cutoffDate();
   const results = $("results");
   results.innerHTML = "";
 
-  const list = lastArticles
+  const inPeriod = lastArticles.filter(a => a.date.getTime() >= cutoff);
+  const list = inPeriod
     .filter(a => !filter || (a.title + " " + a.source).toLowerCase().includes(filter))
     .sort((a, b) =>
       (byVotes ? scoreOf(articleId(b)) - scoreOf(articleId(a)) : 0) ||
       (isPriority(b) - isPriority(a)) || (b.date - a.date));
 
-  $("kpiTotal").textContent = lastArticles.length;
-  $("kpiPrio").textContent = lastArticles.filter(isPriority).length;
-  const kpiCutoff = Date.now() - Number($("days").value) * 24 * 60 * 60 * 1000;
-  $("kpiVoted").textContent = db ? Object.values(votesToday)
-    .filter(d => Object.keys(d.votes || {}).length > 0 && new Date(d.published).getTime() >= kpiCutoff).length : "–";
+  $("kpiTotal").textContent = inPeriod.length;
+  $("kpiPrio").textContent = inPeriod.filter(isPriority).length;
+  $("kpiVoted").textContent = db ? Object.values(votesAll)
+    .filter(d => Object.keys(d.votes || {}).length > 0 && new Date(d.published).getTime() >= cutoff).length : "–";
 
   for (const a of list) results.append(buildCard(a));
 
   if (list.length === 0) {
     const empty = document.createElement("div");
     empty.className = "empty";
-    empty.textContent = lastArticles.length ? "Kein Artikel passt zum Filter." : "Keine Artikel gefunden.";
+    empty.textContent = inPeriod.length ? "Kein Artikel passt zum Filter." : "Keine Artikel gefunden.";
     results.append(empty);
   }
 }
@@ -556,10 +542,11 @@ function renderRanking() {
   const box = $("ranking");
   box.innerHTML = "";
   const days = Number($("days").value);
-  const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
+  const cutoff = cutoffDate();
   $("rankingInfo").textContent = "Alle bewerteten Artikel der letzten " +
     (days === 1 ? "24 Stunden" : days + " Tage") + ", sortiert nach Stimmen. Aktualisiert sich live.";
-  const list = Object.entries(votesToday)
+
+  const list = Object.entries(votesAll)
     .filter(([id, d]) => Object.keys(d.votes || {}).length > 0 && new Date(d.published).getTime() >= cutoff)
     .map(([id, d]) => ({
       id, title: d.title, link: d.link, source: d.source, sourceUrl: d.sourceUrl,
@@ -593,11 +580,12 @@ document.querySelectorAll(".tab").forEach(tab => tab.addEventListener("click", (
 // TEIL D: Zwischenspeicher und Suchablauf
 // =====================================================================
 
+// Gespeichert werden immer alle Treffer; der Zeitraum wird erst bei der Anzeige gefiltert
 function cacheKey() {
-  return "newsmonitor_" + $("days").value + "_" + $("full").checked;
+  return "newsmonitor_bing_" + $("full").checked;
 }
 
-function showStatus(count, time, failedCount, total, fromCache) {
+function showStatus(time, failedCount, total, fromCache) {
   const status = $("status");
   status.className = "status" + (failedCount ? " warn" : " ok");
   status.textContent = "Stand " + new Date(time).toLocaleString("de-CH", { dateStyle: "short", timeStyle: "short" }) +
@@ -616,25 +604,21 @@ function loadCache() {
   }
 }
 
-// Gespeicherte Ergebnisse sofort zeigen; wenn sie älter als CACHE_MINUTES sind,
-// im Hintergrund neu suchen
 function showOrSearch() {
   const data = loadCache();
   if (data) {
     $("failed").textContent = "";
     render(data.articles);
-    showStatus(data.articles.length, data.time, 0, 0, true);
+    showStatus(data.time, 0, 0, true);
     if (Date.now() - data.time < CACHE_MINUTES * 60 * 1000) return;
   }
   run();
 }
 
 async function run() {
-  const days = Number($("days").value);
   const queries = buildQueries($("full").checked);
   const button = $("refresh");
   const status = $("status");
-  const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
   const articles = new Map();
   const failed = [];
   let done = 0;
@@ -649,17 +633,21 @@ async function run() {
   const timer = setTimeout(() => controller.abort(), DEADLINE_SECONDS * 1000);
 
   await Promise.all(queries.map(async q => {
-    try {
-      for (const a of await fetchQuery(q, days, controller.signal)) {
-        if (a.date.getTime() >= cutoff && !articles.has(a.title)) articles.set(a.title, a);
+    // Bei Fehler einmal kurz erneut versuchen
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        for (const a of await fetchQuery(q, controller.signal)) {
+          if (!articles.has(a.link)) articles.set(a.link, a);
+        }
+        break;
+      } catch (e) {
+        if (attempt === 2 || controller.signal.aborted) { failed.push(q); break; }
+        await new Promise(r => setTimeout(r, 800));
       }
-    } catch (e) {
-      failed.push(q);
     }
     done++;
     if (articles.size > 0 || !previous) render(articles.values());
-    status.textContent = "Suche läuft … (" + done + " von " + queries.length + " fertig) · " +
-      articles.size + " Artikel bisher";
+    status.textContent = "Suche läuft … (" + done + " von " + queries.length + " fertig)";
   }));
   clearTimeout(timer);
 
@@ -670,7 +658,7 @@ async function run() {
   } else if (previous) {
     render(previous.articles);  // Suche fehlgeschlagen: alte Ergebnisse behalten
   }
-  showStatus(list.length, Date.now(), failed.length, queries.length, false);
+  showStatus(Date.now(), failed.length, queries.length, false);
   if (failed.length) {
     $("failed").textContent = "Ohne Antwort (nochmals «Aktualisieren» klicken): " + failed.join("  |  ");
   }
@@ -680,7 +668,7 @@ async function run() {
 $("refresh").addEventListener("click", run);
 $("filter").addEventListener("input", () => render(lastArticles));
 $("sort").addEventListener("change", () => render(lastArticles));
-$("days").addEventListener("change", () => { showOrSearch(); renderRanking(); });
+$("days").addEventListener("change", refreshViews);   // Zeitraum filtert nur die Anzeige – keine neue Suche nötig
 $("full").addEventListener("change", showOrSearch);
 
 startFirebase();
