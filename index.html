@@ -56,24 +56,25 @@ async function loadConfig() {
   document.getElementById("days").value = String(config.days_back);
 }
 
-// 2) Suchanfragen bilden (je max. 6 Begriffe pro Anfrage)
+// 2) Suchanfragen bilden
 function buildQueries() {
   const queries = [];
   const direct = config.direct_terms.map(t => '"' + t + '"');
   for (let i = 0; i < direct.length; i += 6) {
     queries.push(direct.slice(i, i + 6).join(" OR "));
   }
+  // Kontextbegriffe in kleineren Gruppen (3), weil diese Suchen viele Treffer liefern
   const context = config.context_terms.map(t => '"' + t + '"');
-  for (let i = 0; i < context.length; i += 6) {
-    queries.push(config.context_word + " (" + context.slice(i, i + 6).join(" OR ") + ")");
+  for (let i = 0; i < context.length; i += 3) {
+    queries.push(config.context_word + " (" + context.slice(i, i + 3).join(" OR ") + ")");
   }
   return queries;
 }
 
 // 3) Eine Suchanfrage bei Google News Schweiz ausführen.
 // Alle Proxys werden gleichzeitig gefragt; die schnellste Antwort gewinnt.
-// Nach 10 Sekunden wird abgebrochen, damit nichts ewig hängt.
-const TIMEOUT_MS = 10000;
+// Nach 20 Sekunden wird abgebrochen, damit nichts ewig hängt.
+const TIMEOUT_MS = 20000;
 
 async function fetchViaProxy(proxy, url) {
   const controller = new AbortController();
@@ -166,48 +167,4 @@ async function run() {
 
   const queries = buildQueries();
   const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
-  const articles = new Map();
-  const failed = [];
-  let done = 0, count = 0, next = 0;
-
-  status.textContent = "Suche läuft … (0 von " + queries.length + " fertig)";
-
-  async function worker() {
-    while (next < queries.length) {
-      const q = queries[next++];
-      try {
-        for (const a of await fetchWithRetry(q, days)) {
-          if (a.date.getTime() >= cutoff && !articles.has(a.title)) {
-            articles.set(a.title, a);
-          }
-        }
-      } catch (e) {
-        failed.push(q);
-      }
-      done++;
-      count = render(articles);
-      status.textContent = "Suche läuft … (" + done + " von " + queries.length + " fertig) · " +
-        count + " Artikel bisher";
-    }
-  }
-
-  await Promise.all(Array.from({ length: PARALLEL }, worker));
-
-  const now = new Date().toLocaleString("de-CH");
-  status.textContent = count + " Artikel gefunden · Stand " + now + " · ★ = Prioritätsquelle" +
-    (failed.length ? " · ⚠ " + failed.length + " von " + queries.length + " Suchen fehlgeschlagen" : "");
-  if (count === 0) document.getElementById("results").textContent = "Keine Artikel gefunden.";
-  if (failed.length) {
-    failedBox.textContent = "Nicht durchsucht (bitte «Aktualisieren» klicken): " + failed.join("  |  ");
-  }
-  button.disabled = false;
-}
-
-document.getElementById("refresh").addEventListener("click", run);
-loadConfig().then(run).catch(() => {
-  document.getElementById("status").textContent = "Fehler: config.json konnte nicht geladen werden.";
-});
-</script>
-
-</body>
-</html>
+  const
