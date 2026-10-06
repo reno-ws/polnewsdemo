@@ -31,8 +31,20 @@
   .mark { width: 10px; height: 38px; background: var(--red); }
   .brand small { display: block; color: #bdbdbd; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; }
   .brand strong { font-size: 22px; font-weight: 700; letter-spacing: -.01em; }
+  .header-inner .me { margin-left: auto; display: flex; align-items: center; gap: 8px; font-size: 13px; color: #bdbdbd; }
+  .me input { font: inherit; color: var(--white); background: #2b2b2b; border: 1px solid #444; border-radius: var(--radius);
+    padding: 7px 10px; width: 170px; }
+  .me input:focus { outline: 2px solid var(--red); border-color: var(--red); }
 
   main { max-width: 1080px; margin: 0 auto; padding: 28px 24px 60px; }
+
+  /* Tabs */
+  .tabs { display: flex; gap: 4px; margin-bottom: 16px; border-bottom: 2px solid var(--grey-300); }
+  .tab { background: none; color: var(--grey-600); border-radius: 0; padding: 10px 16px; font-weight: 600;
+    border-bottom: 3px solid transparent; margin-bottom: -2px; }
+  .tab:hover { background: none; color: var(--black); }
+  .tab.active { color: var(--black); border-bottom-color: var(--red); }
+  .hidden { display: none !important; }
 
   /* Kennzahlen */
   .kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 20px; }
@@ -62,29 +74,47 @@
   .status.warn::before { background: #f0a000; }
   .status.busy::before { background: var(--red); animation: pulse 1s infinite; }
   @keyframes pulse { 50% { opacity: .25; } }
+  .note { background: #fff8e1; border-left: 4px solid #f0a000; padding: 10px 14px; border-radius: var(--radius); font-size: 13px; margin-bottom: 14px; }
 
   /* Artikelkarten */
-  #results { display: grid; gap: 10px; }
-  .card { display: block; background: var(--white); border-radius: var(--radius); box-shadow: var(--shadow);
-    padding: 14px 18px; text-decoration: none; color: inherit; border-left: 4px solid transparent;
+  #results, #ranking { display: grid; gap: 10px; }
+  .card { display: flex; gap: 14px; align-items: center; background: var(--white); border-radius: var(--radius);
+    box-shadow: var(--shadow); padding: 12px 18px 12px 12px; border-left: 4px solid transparent;
     transition: transform .12s, box-shadow .12s; }
   .card:hover { transform: translateY(-1px); box-shadow: 0 2px 4px rgba(0,0,0,.08), 0 8px 24px rgba(0,0,0,.08); }
   .card.prio { border-left-color: var(--red); }
+  .card-body { flex: 1; min-width: 0; text-decoration: none; color: inherit; }
   .card-top { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; font-size: 12px; }
   .source { font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--grey-900); }
   .badge { background: var(--red-soft); color: var(--red-dark); font-weight: 600; padding: 1px 8px; border-radius: 10px; }
   .time { margin-left: auto; color: var(--grey-600); }
   .card-title { font-size: 17px; font-weight: 600; line-height: 1.35; }
-  .card:hover .card-title { color: var(--red-dark); }
+  .card-body:hover .card-title { color: var(--red-dark); }
   .empty { background: var(--white); border-radius: var(--radius); padding: 28px; text-align: center; color: var(--grey-600); }
   #failed { color: var(--red-dark); font-size: 13px; margin-top: 18px; }
+
+  /* Abstimmen */
+  .vote { display: flex; flex-direction: column; align-items: center; width: 44px; flex-shrink: 0; }
+  .vote button { background: none; color: var(--grey-600); padding: 2px 8px; font-size: 16px; line-height: 1; border-radius: 4px; }
+  .vote button:hover { background: var(--grey-100); color: var(--black); }
+  .vote button.up.on { color: #2e9e4f; }
+  .vote button.down.on { color: var(--red); }
+  .vote button:disabled { background: none; color: var(--grey-300); cursor: not-allowed; }
+  .vote .score { font-weight: 700; font-size: 15px; }
+  .vote .score.pos { color: #2e9e4f; }
+  .vote .score.neg { color: var(--red); }
+  .voters { color: var(--grey-600); font-size: 12px; margin-top: 4px; }
+  .rank { font-size: 20px; font-weight: 700; color: var(--grey-300); width: 28px; text-align: right; flex-shrink: 0; }
 
   footer { text-align: center; color: var(--grey-600); font-size: 12px; padding: 0 24px 30px; }
 
   @media (max-width: 640px) {
     .kpis { grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
-    .kpi { padding: 12px; } .kpi .num { font-size: 22px; }
+    .kpi { padding: 12px; }
+    .kpi .num { font-size: 22px; }
     .card-title { font-size: 16px; }
+    .header-inner { flex-wrap: wrap; }
+    .header-inner .me { margin-left: 0; }
   }
 </style>
 </head>
@@ -97,35 +127,56 @@
       <small>Medienmonitoring</small>
       <strong id="org">Stadt Winterthur</strong>
     </div>
+    <label class="me">Ihr Name <input id="myName" placeholder="z. B. Res Nobs" maxlength="40"></label>
   </div>
 </header>
 
 <main>
-  <section class="kpis">
-    <div class="kpi accent"><div class="num" id="kpiTotal">–</div><div class="lbl">Artikel</div></div>
-    <div class="kpi accent"><div class="num" id="kpiPrio">–</div><div class="lbl">aus Prioritätsquellen</div></div>
-    <div class="kpi"><div class="num" id="kpiSources">–</div><div class="lbl">verschiedene Quellen</div></div>
+  <div id="fbNote" class="note hidden"></div>
+
+  <nav class="tabs">
+    <button class="tab active" data-tab="news">News</button>
+    <button class="tab" data-tab="ranking">Team-Ranking heute</button>
+  </nav>
+
+  <!-- ===== Ansicht 1: News ===== -->
+  <section id="view-news">
+    <section class="kpis">
+      <div class="kpi accent"><div class="num" id="kpiTotal">–</div><div class="lbl">Artikel</div></div>
+      <div class="kpi accent"><div class="num" id="kpiPrio">–</div><div class="lbl">aus Prioritätsquellen</div></div>
+      <div class="kpi"><div class="num" id="kpiVoted">–</div><div class="lbl">heute vom Team bewertet</div></div>
+    </section>
+
+    <section class="toolbar">
+      <input type="search" id="filter" placeholder="Ergebnisse filtern, z. B. Stadtwerk oder NZZ …">
+      <select id="days">
+        <option value="1">Letzte 24 Stunden</option>
+        <option value="3">Letzte 3 Tage</option>
+        <option value="7">Letzte 7 Tage</option>
+      </select>
+      <select id="sort">
+        <option value="prio">Sortierung: Quelle &amp; Zeit</option>
+        <option value="votes">Sortierung: Team-Bewertung</option>
+      </select>
+      <label class="check"><input type="checkbox" id="full"> Kontextbegriffe</label>
+      <button id="refresh">Aktualisieren</button>
+    </section>
+
+    <div id="status" class="status">Lade …</div>
+    <div id="results"></div>
+    <div id="failed"></div>
   </section>
 
-  <section class="toolbar">
-    <input type="search" id="filter" placeholder="Ergebnisse filtern, z. B. Stadtwerk oder NZZ …">
-    <select id="days">
-      <option value="1">Letzte 24 Stunden</option>
-      <option value="3">Letzte 3 Tage</option>
-      <option value="7">Letzte 7 Tage</option>
-    </select>
-    <label class="check"><input type="checkbox" id="full"> Kontextbegriffe</label>
-    <button id="refresh">Aktualisieren</button>
+  <!-- ===== Ansicht 2: Team-Ranking ===== -->
+  <section id="view-ranking" class="hidden">
+    <div class="status ok">Alle heute bewerteten Artikel, sortiert nach Stimmen. Aktualisiert sich live.</div>
+    <div id="ranking"></div>
   </section>
-
-  <div id="status" class="status">Lade …</div>
-  <div id="results"></div>
-  <div id="failed"></div>
 </main>
 
 <footer>Quelle: Google News · Es werden nur Schlagzeilen angezeigt; die Artikel öffnen sich beim jeweiligen Medium.</footer>
 
-<script>
+<script type="module">
 // =====================================================================
 // EINSTELLUNGEN – hier Suchbegriffe und Quellen anpassen
 // =====================================================================
@@ -157,13 +208,25 @@ const CONFIG = {
     "Betreibungsamt"
   ],
 
-  // Diese Quellen werden zuerst angezeigt (★)
+  // Diese Quellen werden zuerst angezeigt
   priority_sources: [
     "landbote.ch", "nzz.ch", "tagesanzeiger.ch", "srf.ch", "20min.ch", "watson.ch",
     "blick.ch", "nau.ch", "zueritoday.ch", "toponline.ch", "inside-it.ch", "netzwoche.ch"
   ],
 
   days_back: 1
+};
+
+// ---------------------------------------------------------------------
+// FIREBASE – Verbindung zum Projekt "winti-medienschau"
+// ---------------------------------------------------------------------
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyD-k-0Cy1-ZUYYvkgKPIidphFporYZaDco",
+  authDomain: "winti-medienschau.firebaseapp.com",
+  projectId: "winti-medienschau",
+  storageBucket: "winti-medienschau.firebasestorage.app",
+  messagingSenderId: "942108559475",
+  appId: "1:942108559475:web:ab271583a7d831caf88206"
 };
 
 // So lange wartet die Suche maximal auf die Hilfsdienste (Sekunden)
@@ -173,19 +236,158 @@ const DEADLINE_SECONDS = 30;
 const CACHE_MINUTES = 60;
 // =====================================================================
 
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+import { getFirestore, collection, doc, setDoc, onSnapshot, deleteField } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+const $ = id => document.getElementById(id);
+
 // Hilfsdienste ("Proxys"), über die der Browser Google News abrufen darf.
-// Alle werden gleichzeitig gefragt; die schnellste Antwort gewinnt.
 const PROXIES = [
   url => "https://corsproxy.io/?url=" + encodeURIComponent(url),
   url => "https://api.allorigins.win/raw?url=" + encodeURIComponent(url),
   url => "https://api.codetabs.com/v1/proxy?quest=" + encodeURIComponent(url)
 ];
 
-document.getElementById("org").textContent = CONFIG.organisation;
+$("org").textContent = CONFIG.organisation;
 document.title = "Medienmonitoring " + CONFIG.organisation;
-document.getElementById("days").value = String(CONFIG.days_back);
+$("days").value = String(CONFIG.days_back);
 
-// 1) Suchanfragen bilden
+// =====================================================================
+// TEIL A: Team-Abstimmung mit Firebase
+// =====================================================================
+
+// Heutiges Datum (Schweizer Zeit) – jeder Tag hat seine eigene Abstimmung
+const TODAY = new Date().toLocaleDateString("sv-SE", { timeZone: "Europe/Zurich" });
+
+let db = null;
+let myId = null;        // anonyme Kennung dieses Browsers
+let votesToday = {};    // Artikel-ID -> Daten aus Firebase
+
+// Name im Browser merken
+$("myName").value = localStorage.getItem("newsmonitor_name") || "";
+$("myName").addEventListener("input", () => {
+  localStorage.setItem("newsmonitor_name", $("myName").value.trim());
+  refreshViews();
+});
+const myName = () => $("myName").value.trim();
+
+function showNote(text) {
+  $("fbNote").textContent = text;
+  $("fbNote").classList.toggle("hidden", !text);
+}
+
+// Eindeutige, kurze ID pro Artikel (aus dem Link berechnet)
+function articleId(a) {
+  if (a.id) return a.id;
+  let h1 = 0xdeadbeef, h2 = 0x41c6ce57;
+  for (const ch of a.link || a.title) {
+    const c = ch.charCodeAt(0);
+    h1 = Math.imul(h1 ^ c, 2654435761);
+    h2 = Math.imul(h2 ^ c, 1597334677);
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  return (h2 >>> 0).toString(36) + (h1 >>> 0).toString(36);
+}
+
+function scoreOf(id) {
+  const v = votesToday[id]?.votes || {};
+  return Object.values(v).reduce((sum, x) => sum + x, 0);
+}
+
+function myVote(id) {
+  return votesToday[id]?.votes?.[myId] || 0;
+}
+
+async function startFirebase() {
+  try {
+    const app = initializeApp(FIREBASE_CONFIG);
+    const auth = getAuth(app);
+    db = getFirestore(app);
+
+    onAuthStateChanged(auth, user => {
+      if (!user) return;
+      myId = user.uid;
+      showNote("");
+      // Live-Verbindung: jede Stimme im Team erscheint sofort bei allen
+      onSnapshot(collection(db, "days", TODAY, "articles"), snap => {
+        votesToday = {};
+        snap.forEach(d => votesToday[d.id] = d.data());
+        refreshViews();
+      }, err => showNote("Firebase-Fehler beim Lesen: " + err.message));
+    });
+
+    await signInAnonymously(auth);
+  } catch (e) {
+    db = null;
+    showNote("Firebase-Anmeldung fehlgeschlagen: " + e.message);
+    refreshViews();
+  }
+}
+
+// Stimme abgeben: +1 oder -1. Nochmals klicken nimmt die Stimme zurück.
+async function vote(a, value) {
+  if (!db || !myId) return;
+  if (!myName()) {
+    alert("Bitte oben rechts zuerst Ihren Namen eingeben.");
+    $("myName").focus();
+    return;
+  }
+  const id = articleId(a);
+  const remove = myVote(id) === value;
+  const ref = doc(db, "days", TODAY, "articles", id);
+  try {
+    await setDoc(ref, {
+      title: cleanTitle(a),
+      link: a.link,
+      source: a.source,
+      sourceUrl: a.sourceUrl || "",
+      published: a.date.toISOString(),
+      votes: { [myId]: remove ? deleteField() : value },
+      names: { [myId]: remove ? deleteField() : myName() }
+    }, { merge: true });
+  } catch (e) {
+    showNote("Stimme konnte nicht gespeichert werden: " + e.message);
+  }
+}
+
+// Die Abstimm-Spalte (▲ Zahl ▼) für eine Karte bauen
+function voteBox(a) {
+  const id = articleId(a);
+  const box = document.createElement("div");
+  box.className = "vote";
+  const up = document.createElement("button");
+  up.className = "up" + (myVote(id) === 1 ? " on" : "");
+  up.textContent = "▲";
+  up.title = "Relevant";
+  const score = document.createElement("div");
+  const s = scoreOf(id);
+  score.className = "score" + (s > 0 ? " pos" : s < 0 ? " neg" : "");
+  score.textContent = s;
+  const down = document.createElement("button");
+  down.className = "down" + (myVote(id) === -1 ? " on" : "");
+  down.textContent = "▼";
+  down.title = "Nicht relevant";
+  up.disabled = down.disabled = !(db && myId);
+  up.onclick = () => vote(a, 1);
+  down.onclick = () => vote(a, -1);
+  box.append(up, score, down);
+  return box;
+}
+
+function voterLine(id) {
+  const data = votesToday[id];
+  if (!data?.votes) return "";
+  return Object.entries(data.votes)
+    .map(([uid, v]) => (v > 0 ? "▲ " : "▼ ") + (data.names?.[uid] || "Unbekannt"))
+    .join(" · ");
+}
+
+// =====================================================================
+// TEIL B: News suchen
+// =====================================================================
+
 function buildQueries(full) {
   const quote = t => '"' + t + '"';
   const queries = [];
@@ -201,10 +403,9 @@ function buildQueries(full) {
   return queries;
 }
 
-// 2) Eine Suche: alle Proxys gleichzeitig, erste gültige Antwort zählt.
-// Schlägt alles fehl, wird bis zum Zeitlimit erneut versucht.
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 
+// Eine Suche so lange wiederholen, bis sie klappt oder das Zeitlimit erreicht ist
 async function fetchQuery(query, days, signal) {
   for (let attempt = 1; ; attempt++) {
     try {
@@ -216,6 +417,7 @@ async function fetchQuery(query, days, signal) {
   }
 }
 
+// Alle Proxys gleichzeitig fragen; die erste gültige Antwort zählt
 async function fetchOnce(query, days, signal) {
   const url = "https://news.google.com/rss/search?q=" +
     encodeURIComponent(query + " when:" + days + "d") + "&hl=de&gl=CH&ceid=CH:de";
@@ -240,11 +442,8 @@ async function fetchOnce(query, days, signal) {
 }
 
 function isPriority(a) {
-  return CONFIG.priority_sources.some(p => a.sourceUrl.includes(p));
+  return CONFIG.priority_sources.some(p => (a.sourceUrl || "").includes(p));
 }
-
-// 3) Ergebnisliste anzeigen (als Karten), inkl. Textfilter und Kennzahlen
-let lastArticles = [];
 
 function timeAgo(date) {
   const min = Math.round((Date.now() - date) / 60000);
@@ -260,53 +459,86 @@ function cleanTitle(a) {
   return a.title.endsWith(suffix) ? a.title.slice(0, -suffix.length) : a.title;
 }
 
+// =====================================================================
+// TEIL C: Anzeige
+// =====================================================================
+
+let lastArticles = [];
+
+// Eine Artikelkarte bauen (wird in beiden Ansichten verwendet)
+function buildCard(a, rank) {
+  const id = articleId(a);
+  const card = document.createElement("div");
+  card.className = "card" + (isPriority(a) ? " prio" : "");
+
+  if (rank) {
+    const r = document.createElement("div");
+    r.className = "rank";
+    r.textContent = rank;
+    card.append(r);
+  }
+  card.append(voteBox(a));
+
+  const body = document.createElement("a");
+  body.className = "card-body";
+  body.href = a.link;
+  body.target = "_blank";
+  body.rel = "noopener";
+
+  const top = document.createElement("div");
+  top.className = "card-top";
+  const source = document.createElement("span");
+  source.className = "source";
+  source.textContent = a.source || "Unbekannte Quelle";
+  top.append(source);
+  if (isPriority(a)) {
+    const badge = document.createElement("span");
+    badge.className = "badge";
+    badge.textContent = "Priorität";
+    top.append(badge);
+  }
+  const time = document.createElement("span");
+  time.className = "time";
+  time.textContent = timeAgo(a.date);
+  time.title = a.date.toLocaleString("de-CH");
+  top.append(time);
+
+  const title = document.createElement("div");
+  title.className = "card-title";
+  title.textContent = cleanTitle(a);
+  body.append(top, title);
+
+  const voters = voterLine(id);
+  if (voters) {
+    const v = document.createElement("div");
+    v.className = "voters";
+    v.textContent = voters;
+    body.append(v);
+  }
+
+  card.append(body);
+  return card;
+}
+
 function render(articles) {
   lastArticles = [...articles];
-  const filter = document.getElementById("filter").value.trim().toLowerCase();
-  const results = document.getElementById("results");
+  const filter = $("filter").value.trim().toLowerCase();
+  const byVotes = $("sort").value === "votes";
+  const results = $("results");
   results.innerHTML = "";
 
   const list = lastArticles
     .filter(a => !filter || (a.title + " " + a.source).toLowerCase().includes(filter))
-    .sort((a, b) => (isPriority(b) - isPriority(a)) || (b.date - a.date));
+    .sort((a, b) =>
+      (byVotes ? scoreOf(articleId(b)) - scoreOf(articleId(a)) : 0) ||
+      (isPriority(b) - isPriority(a)) || (b.date - a.date));
 
-  // Kennzahlen
-  document.getElementById("kpiTotal").textContent = lastArticles.length;
-  document.getElementById("kpiPrio").textContent = lastArticles.filter(isPriority).length;
-  document.getElementById("kpiSources").textContent = new Set(lastArticles.map(a => a.source)).size;
+  $("kpiTotal").textContent = lastArticles.length;
+  $("kpiPrio").textContent = lastArticles.filter(isPriority).length;
+  $("kpiVoted").textContent = db ? Object.values(votesToday)
+    .filter(d => Object.keys(d.votes || {}).length > 0).length : "–";
 
-  for (const a of list) {
-    const card = document.createElement("a");
-    card.className = "card" + (isPriority(a) ? " prio" : "");
-    card.href = a.link;
-    card.target = "_blank";
-    card.rel = "noopener";
-
-    const top = document.createElement("div");
-    top.className = "card-top";
-    const source = document.createElement("span");
-    source.className = "source";
-    source.textContent = a.source || "Unbekannte Quelle";
-    top.append(source);
-    if (isPriority(a)) {
-      const badge = document.createElement("span");
-      badge.className = "badge";
-      badge.textContent = "Priorität";
-      top.append(badge);
-    }
-    const time = document.createElement("span");
-    time.className = "time";
-    time.textContent = timeAgo(a.date);
-    time.title = a.date.toLocaleString("de-CH");
-    top.append(time);
-
-    const title = document.createElement("div");
-    title.className = "card-title";
-    title.textContent = cleanTitle(a);
-
-    card.append(top, title);
-    results.append(card);
-  }
+  for (const a of list) results.append(buildCard(a));
 
   if (list.length === 0) {
     const empty = document.createElement("div");
@@ -316,14 +548,50 @@ function render(articles) {
   }
 }
 
-// 4) Zwischenspeicher im Browser
+// Team-Ranking: alle heute bewerteten Artikel aus Firebase, nach Stimmen sortiert
+function renderRanking() {
+  const box = $("ranking");
+  box.innerHTML = "";
+  const list = Object.entries(votesToday)
+    .filter(([id, d]) => Object.keys(d.votes || {}).length > 0)
+    .map(([id, d]) => ({
+      id, title: d.title, link: d.link, source: d.source, sourceUrl: d.sourceUrl,
+      date: new Date(d.published)
+    }))
+    .sort((a, b) => scoreOf(b.id) - scoreOf(a.id) || b.date - a.date);
+
+  list.forEach((a, i) => box.append(buildCard(a, i + 1)));
+
+  if (list.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "empty";
+    empty.textContent = db ? "Heute wurde noch kein Artikel bewertet." : "Abstimmen ist noch nicht aktiv.";
+    box.append(empty);
+  }
+}
+
+function refreshViews() {
+  render(lastArticles);
+  renderRanking();
+}
+
+// Tabs umschalten
+document.querySelectorAll(".tab").forEach(tab => tab.addEventListener("click", () => {
+  document.querySelectorAll(".tab").forEach(t => t.classList.toggle("active", t === tab));
+  $("view-news").classList.toggle("hidden", tab.dataset.tab !== "news");
+  $("view-ranking").classList.toggle("hidden", tab.dataset.tab !== "ranking");
+}));
+
+// =====================================================================
+// TEIL D: Zwischenspeicher und Suchablauf
+// =====================================================================
+
 function cacheKey() {
-  return "newsmonitor_" + document.getElementById("days").value + "_" +
-    document.getElementById("full").checked;
+  return "newsmonitor_" + $("days").value + "_" + $("full").checked;
 }
 
 function showStatus(count, time, failedCount, total, fromCache) {
-  const status = document.getElementById("status");
+  const status = $("status");
   status.className = "status" + (failedCount ? " warn" : " ok");
   status.textContent = "Stand " + new Date(time).toLocaleString("de-CH", { dateStyle: "short", timeStyle: "short" }) +
     (fromCache ? " · aus Zwischenspeicher" : "") +
@@ -341,12 +609,12 @@ function loadCache() {
   }
 }
 
-// Gespeicherte Ergebnisse sofort zeigen. Sind sie älter als CACHE_MINUTES,
-// wird im Hintergrund neu gesucht, während die alten sichtbar bleiben.
+// Gespeicherte Ergebnisse sofort zeigen; wenn sie älter als CACHE_MINUTES sind,
+// im Hintergrund neu suchen
 function showOrSearch() {
   const data = loadCache();
   if (data) {
-    document.getElementById("failed").textContent = "";
+    $("failed").textContent = "";
     render(data.articles);
     showStatus(data.articles.length, data.time, 0, 0, true);
     if (Date.now() - data.time < CACHE_MINUTES * 60 * 1000) return;
@@ -354,21 +622,19 @@ function showOrSearch() {
   run();
 }
 
-// 5) Alle Suchen gleichzeitig starten, nach DEADLINE_SECONDS hart abbrechen
 async function run() {
-  const days = Number(document.getElementById("days").value);
-  const queries = buildQueries(document.getElementById("full").checked);
-  const button = document.getElementById("refresh");
-  const status = document.getElementById("status");
+  const days = Number($("days").value);
+  const queries = buildQueries($("full").checked);
+  const button = $("refresh");
+  const status = $("status");
   const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
   const articles = new Map();
   const failed = [];
   let done = 0;
 
-  // Alte Ergebnisse bleiben sichtbar, bis neue da sind
   const previous = loadCache();
   button.disabled = true;
-  document.getElementById("failed").textContent = "";
+  $("failed").textContent = "";
   status.className = "status busy";
   status.textContent = "Suche läuft …";
 
@@ -399,16 +665,18 @@ async function run() {
   }
   showStatus(list.length, Date.now(), failed.length, queries.length, false);
   if (failed.length) {
-    document.getElementById("failed").textContent =
-      "Ohne Antwort (nochmals «Aktualisieren» klicken): " + failed.join("  |  ");
+    $("failed").textContent = "Ohne Antwort (nochmals «Aktualisieren» klicken): " + failed.join("  |  ");
   }
   button.disabled = false;
 }
 
-document.getElementById("refresh").addEventListener("click", run);
-document.getElementById("filter").addEventListener("input", () => render(lastArticles));
-document.getElementById("days").addEventListener("change", showOrSearch);
-document.getElementById("full").addEventListener("change", showOrSearch);
+$("refresh").addEventListener("click", run);
+$("filter").addEventListener("input", () => render(lastArticles));
+$("sort").addEventListener("change", () => render(lastArticles));
+$("days").addEventListener("change", showOrSearch);
+$("full").addEventListener("change", showOrSearch);
+
+startFirebase();
 showOrSearch();
 </script>
 
