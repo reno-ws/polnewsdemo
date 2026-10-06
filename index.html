@@ -5,246 +5,31 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Medienmonitoring</title>
 <style>
-  body { font-family: Arial, sans-serif; max-width: 860px; margin: 40px auto; padding: 0 16px; color: #222; }
-  h1 { font-size: 24px; margin-bottom: 4px; }
-  .bar { display: flex; gap: 14px; align-items: center; margin: 16px 0; flex-wrap: wrap; font-size: 14px; }
-  select, button { font-size: 14px; padding: 6px 10px; }
-  button { background: #1a3e8c; color: white; border: none; border-radius: 4px; cursor: pointer; }
-  button:disabled { background: #999; }
-  #status { color: #666; font-size: 14px; margin-bottom: 16px; }
-  .item { padding: 12px 14px; border-bottom: 1px solid #eee; }
-  .item.prio { background: #f5f7ff; }
-  .item a { font-size: 16px; color: #1a3e8c; text-decoration: none; }
-  .item a:hover { text-decoration: underline; }
-  .meta { color: #777; font-size: 13px; margin-top: 4px; }
-  #failed { color: #a33; font-size: 13px; margin-top: 20px; }
-</style>
-</head>
-<body>
-
-<h1 id="title">Medienmonitoring</h1>
-
-<div class="bar">
-  <label>Zeitraum:
-    <select id="days">
-      <option value="1">Letzte 24 Stunden</option>
-      <option value="3">Letzte 3 Tage</option>
-      <option value="7">Letzte 7 Tage</option>
-    </select>
-  </label>
-  <label><input type="checkbox" id="full"> Auch Kontextbegriffe (langsamer)</label>
-  <button id="refresh">Aktualisieren</button>
-</div>
-
-<div id="status">Lade …</div>
-<div id="results"></div>
-<div id="failed"></div>
-
-<script>
-// =====================================================================
-// EINSTELLUNGEN – hier Suchbegriffe und Quellen anpassen
-// =====================================================================
-const CONFIG = {
-  organisation: "Stadt Winterthur",
-  context_word: "Winterthur",
-
-  // Zählen immer
-  direct_terms: [
-    "Stadt Winterthur", "Stadtwerk Winterthur", "Stadtpolizei Winterthur",
-    "Stapo Winterthur", "Stadtrat Winterthur", "Winterthurer Stadtrat",
-    "Stadtparlament Winterthur", "Winterthurer Stadtpräsident", "Stadtbus Winterthur",
-    "Stadtgrün Winterthur", "Schutz & Intervention Winterthur", "Feuerwehr Winterthur",
-    "Winterthurer Bibliotheken", "Winterthurer Schulpflege"
-  ],
-
-  // Zählen nur zusammen mit "Winterthur" (nur wenn Häkchen gesetzt)
-  context_terms: [
-    "Stadtwerk", "Stadtpolizei", "Stapo", "Stadtbus", "Stadtrat", "Stadtparlament",
-    "Stadtkanzlei", "Departement Präsidiales", "Departement Finanzen",
-    "Departement Bau und Mobilität", "Departement Sicherheit und Umwelt",
-    "Departement Schule und Sport", "Departement Soziales", "Departement Technische Betriebe",
-    "Amt für Stadtentwicklung", "Amt für Kultur", "Personalamt", "Finanzamt", "Steueramt",
-    "Informatikdienste", "Amt für Baubewilligungen", "Amt für Städtebau", "Tiefbauamt",
-    "Stadtrichteramt", "Umwelt- und Gesundheitsschutz", "Schulamt", "Sportamt",
-    "Soziale Dienste", "Alter und Pflege", "Zivilschutz", "Stadtarchiv", "KESB",
-    "Kindes- und Erwachsenenschutzbehörde", "Sozialhilfebehörde", "Ombudsstelle",
-    "Datenschutzstelle", "Finanzkontrolle", "Friedensrichteramt", "Stadtammannamt",
-    "Betreibungsamt"
-  ],
-
-  // Diese Quellen werden zuerst angezeigt (★)
-  priority_sources: [
-    "landbote.ch", "nzz.ch", "tagesanzeiger.ch", "srf.ch", "20min.ch", "watson.ch",
-    "blick.ch", "nau.ch", "zueritoday.ch", "toponline.ch", "inside-it.ch", "netzwoche.ch"
-  ],
-
-  days_back: 1
-};
-
-// Spätestens nach so vielen Sekunden werden die Ergebnisse angezeigt
-const DEADLINE_SECONDS = 8;
-
-// Ergebnisse werden so lange im Browser gespeichert (in Minuten)
-const CACHE_MINUTES = 60;
-// =====================================================================
-
-// Hilfsdienste ("Proxys"), über die der Browser Google News abrufen darf.
-// Alle werden gleichzeitig gefragt; die schnellste Antwort gewinnt.
-const PROXIES = [
-  url => "https://corsproxy.io/?url=" + encodeURIComponent(url),
-  url => "https://api.allorigins.win/raw?url=" + encodeURIComponent(url),
-  url => "https://api.codetabs.com/v1/proxy?quest=" + encodeURIComponent(url)
-];
-
-document.getElementById("title").textContent = "Medienmonitoring " + CONFIG.organisation;
-document.title = "Medienmonitoring " + CONFIG.organisation;
-document.getElementById("days").value = String(CONFIG.days_back);
-
-// 1) Suchanfragen bilden
-function buildQueries(full) {
-  const quote = t => '"' + t + '"';
-  const queries = [];
-  for (let i = 0; i < CONFIG.direct_terms.length; i += 6) {
-    queries.push(CONFIG.direct_terms.slice(i, i + 6).map(quote).join(" OR "));
+  /* Farben angelehnt an das Erscheinungsbild der Stadt Winterthur (Schwarz-Rot) */
+  :root {
+    --red: #e30613;
+    --red-dark: #b8000e;
+    --red-soft: #fdecee;
+    --black: #111111;
+    --grey-900: #2b2b2b;
+    --grey-600: #6b6b6b;
+    --grey-300: #d9d9d9;
+    --grey-100: #f4f4f4;
+    --white: #ffffff;
+    --radius: 6px;
+    --shadow: 0 1px 2px rgba(0,0,0,.06), 0 4px 16px rgba(0,0,0,.06);
   }
-  if (full) {
-    for (let i = 0; i < CONFIG.context_terms.length; i += 3) {
-      queries.push(CONFIG.context_word + " (" +
-        CONFIG.context_terms.slice(i, i + 3).map(quote).join(" OR ") + ")");
-    }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--grey-100); color: var(--black);
+    font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; font-size: 15px; line-height: 1.45;
   }
-  return queries;
-}
 
-// 2) Eine Suche: alle Proxys gleichzeitig, erste gültige Antwort zählt
-async function fetchQuery(query, days, signal) {
-  const url = "https://news.google.com/rss/search?q=" +
-    encodeURIComponent(query + " when:" + days + "d") + "&hl=de&gl=CH&ceid=CH:de";
-  const text = await Promise.any(PROXIES.map(async proxy => {
-    const response = await fetch(proxy(url), { signal });
-    if (!response.ok) throw new Error("HTTP " + response.status);
-    const t = await response.text();
-    if (!t.includes("<rss")) throw new Error("Keine gültige Antwort");
-    return t;
-  }));
-  const xml = new DOMParser().parseFromString(text, "text/xml");
-  return [...xml.querySelectorAll("item")].map(item => {
-    const source = item.querySelector("source");
-    return {
-      title: item.querySelector("title")?.textContent || "",
-      link: item.querySelector("link")?.textContent || "",
-      date: new Date(item.querySelector("pubDate")?.textContent),
-      source: source ? source.textContent : "",
-      sourceUrl: source ? source.getAttribute("url") || "" : ""
-    };
-  });
-}
+  /* Kopfzeile */
+  header { background: var(--black); color: var(--white); border-bottom: 4px solid var(--red); }
+  .header-inner { max-width: 1080px; margin: 0 auto; padding: 18px 24px; display: flex; align-items: center; gap: 16px; }
+  .mark { width: 10px; height: 38px; background: var(--red); }
+  .brand small { display: block; color: #bdbdbd; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; }
+  .brand strong { font-size: 22px; font-weight: 700; letter-spacing: -.01em; }
 
-function isPriority(a) {
-  return CONFIG.priority_sources.some(p => a.sourceUrl.includes(p));
-}
-
-// 3) Ergebnisliste anzeigen
-function render(articles) {
-  const results = document.getElementById("results");
-  results.innerHTML = "";
-  const list = [...articles].sort((a, b) =>
-    (isPriority(b) - isPriority(a)) || (b.date - a.date));
-  for (const a of list) {
-    const div = document.createElement("div");
-    div.className = "item" + (isPriority(a) ? " prio" : "");
-    const link = document.createElement("a");
-    link.href = a.link;
-    link.target = "_blank";
-    link.textContent = a.title;
-    const meta = document.createElement("div");
-    meta.className = "meta";
-    meta.textContent = (isPriority(a) ? "★ " : "") + a.source + " · " +
-      a.date.toLocaleString("de-CH", { dateStyle: "short", timeStyle: "short" });
-    div.append(link, meta);
-    results.append(div);
-  }
-  if (list.length === 0) results.textContent = "Keine Artikel gefunden.";
-}
-
-// 4) Zwischenspeicher im Browser
-function cacheKey() {
-  return "newsmonitor_" + document.getElementById("days").value + "_" +
-    document.getElementById("full").checked;
-}
-
-function showStatus(count, time, failedCount, total, fromCache) {
-  document.getElementById("status").textContent =
-    count + " Artikel · Stand " + new Date(time).toLocaleString("de-CH") +
-    (fromCache ? " (gespeichert)" : "") + " · ★ = Prioritätsquelle" +
-    (failedCount ? " · ⚠ " + failedCount + " von " + total + " Suchen ohne Antwort" : "");
-}
-
-function showOrSearch() {
-  try {
-    const data = JSON.parse(localStorage.getItem(cacheKey()));
-    if (data && Date.now() - data.time < CACHE_MINUTES * 60 * 1000) {
-      data.articles.forEach(a => a.date = new Date(a.date));
-      document.getElementById("failed").textContent = "";
-      render(data.articles);
-      showStatus(data.articles.length, data.time, 0, 0, true);
-      return;
-    }
-  } catch (e) { /* kein gültiger Speicher */ }
-  run();
-}
-
-// 5) Alle Suchen gleichzeitig starten, nach DEADLINE_SECONDS hart abbrechen
-async function run() {
-  const days = Number(document.getElementById("days").value);
-  const queries = buildQueries(document.getElementById("full").checked);
-  const button = document.getElementById("refresh");
-  const status = document.getElementById("status");
-  const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
-  const articles = new Map();
-  const failed = [];
-  let done = 0;
-
-  button.disabled = true;
-  document.getElementById("results").innerHTML = "";
-  document.getElementById("failed").textContent = "";
-  status.textContent = "Suche läuft … (max. " + DEADLINE_SECONDS + " Sekunden)";
-
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), DEADLINE_SECONDS * 1000);
-
-  await Promise.all(queries.map(async q => {
-    try {
-      for (const a of await fetchQuery(q, days, controller.signal)) {
-        if (a.date.getTime() >= cutoff && !articles.has(a.title)) articles.set(a.title, a);
-      }
-    } catch (e) {
-      failed.push(q);
-    }
-    done++;
-    render(articles.values());
-    status.textContent = "Suche läuft … (" + done + " von " + queries.length + " fertig) · " +
-      articles.size + " Artikel bisher";
-  }));
-  clearTimeout(timer);
-
-  const list = [...articles.values()];
-  if (failed.length === 0) {
-    localStorage.setItem(cacheKey(), JSON.stringify({ time: Date.now(), articles: list }));
-  }
-  showStatus(list.length, Date.now(), failed.length, queries.length, false);
-  if (failed.length) {
-    document.getElementById("failed").textContent =
-      "Ohne Antwort (nochmals «Aktualisieren» klicken): " + failed.join("  |  ");
-  }
-  button.disabled = false;
-}
-
-document.getElementById("refresh").addEventListener("click", run);
-document.getElementById("days").addEventListener("change", showOrSearch);
-document.getElementById("full").addEventListener("change", showOrSearch);
-showOrSearch();
-</script>
-
-</body>
-</html>
+  main { max-width: 1080px; margin: 0 auto; padding
