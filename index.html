@@ -136,7 +136,7 @@
 
   <nav class="tabs">
     <button class="tab active" data-tab="news">News</button>
-    <button class="tab" data-tab="ranking">Team-Ranking heute</button>
+    <button class="tab" data-tab="ranking">Team-Ranking</button>
   </nav>
 
   <!-- ===== Ansicht 1: News ===== -->
@@ -144,7 +144,7 @@
     <section class="kpis">
       <div class="kpi accent"><div class="num" id="kpiTotal">–</div><div class="lbl">Artikel</div></div>
       <div class="kpi accent"><div class="num" id="kpiPrio">–</div><div class="lbl">aus Prioritätsquellen</div></div>
-      <div class="kpi"><div class="num" id="kpiVoted">–</div><div class="lbl">heute vom Team bewertet</div></div>
+      <div class="kpi"><div class="num" id="kpiVoted">–</div><div class="lbl">vom Team bewertet</div></div>
     </section>
 
     <section class="toolbar">
@@ -169,7 +169,7 @@
 
   <!-- ===== Ansicht 2: Team-Ranking ===== -->
   <section id="view-ranking" class="hidden">
-    <div class="status ok">Alle heute bewerteten Artikel, sortiert nach Stimmen. Aktualisiert sich live.</div>
+    <div class="status ok" id="rankingInfo">Alle bewerteten Artikel im gewählten Zeitraum, sortiert nach Stimmen. Aktualisiert sich live.</div>
     <div id="ranking"></div>
   </section>
 </main>
@@ -214,7 +214,7 @@ const CONFIG = {
     "blick.ch", "nau.ch", "zueritoday.ch", "toponline.ch", "inside-it.ch", "netzwoche.ch"
   ],
 
-  days_back: 1
+  days_back: 7
 };
 
 // ---------------------------------------------------------------------
@@ -238,7 +238,7 @@ const CACHE_MINUTES = 60;
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-import { getFirestore, collection, doc, setDoc, onSnapshot, deleteField } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { getFirestore, collection, doc, setDoc, onSnapshot, deleteField, query, where } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 const $ = id => document.getElementById(id);
 
@@ -257,12 +257,13 @@ $("days").value = String(CONFIG.days_back);
 // TEIL A: Team-Abstimmung mit Firebase
 // =====================================================================
 
-// Heutiges Datum (Schweizer Zeit) – jeder Tag hat seine eigene Abstimmung
-const TODAY = new Date().toLocaleDateString("sv-SE", { timeZone: "Europe/Zurich" });
+// Stimmen werden pro Artikel gespeichert (Sammlung "votes").
+// Geladen werden alle Artikel, die in den letzten MAX_DAYS Tagen erschienen sind.
+const MAX_DAYS = 7;
 
 let db = null;
 let myId = null;        // anonyme Kennung dieses Browsers
-let votesToday = {};    // Artikel-ID -> Daten aus Firebase
+let votesToday = {};    // Artikel-ID -> Daten aus Firebase (letzte 7 Tage)
 
 // Name im Browser merken
 $("myName").value = localStorage.getItem("newsmonitor_name") || "";
@@ -311,7 +312,8 @@ async function startFirebase() {
       myId = user.uid;
       showNote("");
       // Live-Verbindung: jede Stimme im Team erscheint sofort bei allen
-      onSnapshot(collection(db, "days", TODAY, "articles"), snap => {
+      const since = new Date(Date.now() - MAX_DAYS * 24 * 60 * 60 * 1000).toISOString();
+      onSnapshot(query(collection(db, "votes"), where("published", ">=", since)), snap => {
         votesToday = {};
         snap.forEach(d => votesToday[d.id] = d.data());
         refreshViews();
@@ -336,7 +338,7 @@ async function vote(a, value) {
   }
   const id = articleId(a);
   const remove = myVote(id) === value;
-  const ref = doc(db, "days", TODAY, "articles", id);
+  const ref = doc(db, "votes", id);
   try {
     await setDoc(ref, {
       title: cleanTitle(a),
@@ -535,8 +537,9 @@ function render(articles) {
 
   $("kpiTotal").textContent = lastArticles.length;
   $("kpiPrio").textContent = lastArticles.filter(isPriority).length;
+  const kpiCutoff = Date.now() - Number($("days").value) * 24 * 60 * 60 * 1000;
   $("kpiVoted").textContent = db ? Object.values(votesToday)
-    .filter(d => Object.keys(d.votes || {}).length > 0).length : "–";
+    .filter(d => Object.keys(d.votes || {}).length > 0 && new Date(d.published).getTime() >= kpiCutoff).length : "–";
 
   for (const a of list) results.append(buildCard(a));
 
@@ -548,12 +551,16 @@ function render(articles) {
   }
 }
 
-// Team-Ranking: alle heute bewerteten Artikel aus Firebase, nach Stimmen sortiert
+// Team-Ranking: alle bewerteten Artikel im gewählten Zeitraum, nach Stimmen sortiert
 function renderRanking() {
   const box = $("ranking");
   box.innerHTML = "";
+  const days = Number($("days").value);
+  const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
+  $("rankingInfo").textContent = "Alle bewerteten Artikel der letzten " +
+    (days === 1 ? "24 Stunden" : days + " Tage") + ", sortiert nach Stimmen. Aktualisiert sich live.";
   const list = Object.entries(votesToday)
-    .filter(([id, d]) => Object.keys(d.votes || {}).length > 0)
+    .filter(([id, d]) => Object.keys(d.votes || {}).length > 0 && new Date(d.published).getTime() >= cutoff)
     .map(([id, d]) => ({
       id, title: d.title, link: d.link, source: d.source, sourceUrl: d.sourceUrl,
       date: new Date(d.published)
@@ -565,7 +572,7 @@ function renderRanking() {
   if (list.length === 0) {
     const empty = document.createElement("div");
     empty.className = "empty";
-    empty.textContent = db ? "Heute wurde noch kein Artikel bewertet." : "Abstimmen ist noch nicht aktiv.";
+    empty.textContent = db ? "In diesem Zeitraum wurde noch kein Artikel bewertet." : "Abstimmen ist noch nicht aktiv.";
     box.append(empty);
   }
 }
@@ -673,7 +680,7 @@ async function run() {
 $("refresh").addEventListener("click", run);
 $("filter").addEventListener("input", () => render(lastArticles));
 $("sort").addEventListener("change", () => render(lastArticles));
-$("days").addEventListener("change", showOrSearch);
+$("days").addEventListener("change", () => { showOrSearch(); renderRanking(); });
 $("full").addEventListener("change", showOrSearch);
 
 startFirebase();
