@@ -112,7 +112,7 @@
 
   /* Statistik & Rangliste */
   .lb { background: var(--white); border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden; }
-  .lb-head, .lb-row { display: grid; grid-template-columns: 48px minmax(120px, 1.2fr) 2fr 56px 56px 64px; gap: 12px;
+  .lb-head, .lb-row { display: grid; grid-template-columns: 48px minmax(120px, 1.2fr) 1.6fr 44px 44px 64px 64px 96px; gap: 12px;
     align-items: center; padding: 12px 18px; }
   .lb-head { background: var(--black); color: var(--white); font-size: 12px; text-transform: uppercase; letter-spacing: .06em; }
   .lb-row { border-top: 1px solid var(--grey-100); }
@@ -131,6 +131,29 @@
   .lb-num.up { color: var(--green); font-weight: 600; }
   .lb-num.down { color: var(--red); font-weight: 600; }
   .lb-num.total { font-weight: 700; }
+  .lb-num.steal.plus { color: var(--green); }
+  .lb-num.steal.minus { color: var(--red); }
+  .lb-num.steal.zero { color: var(--grey-300); }
+  .steal-btn { padding: 5px 10px; font-size: 12px; }
+  .steal-btn.done { background: var(--grey-100); color: var(--grey-600); }
+
+  .reset-row { display: flex; align-items: center; gap: 14px; margin-top: 22px; padding-top: 16px; border-top: 1px dashed var(--grey-300); flex-wrap: wrap; }
+  .reset-row span { color: var(--grey-600); font-size: 12px; flex: 1; min-width: 200px; }
+  .reset-btn { background: var(--white); color: var(--red-dark); border: 2px solid var(--red); }
+  .reset-btn:hover { background: var(--red); color: var(--white); }
+  .reset-btn:disabled { background: var(--grey-100); color: var(--grey-300); border-color: var(--grey-300); }
+
+  /* Meldung (Toast) und Bild beim Klauen */
+  .toast { position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%); background: var(--black); color: var(--white);
+    padding: 10px 18px; border-radius: var(--radius); font-size: 14px; z-index: 60; box-shadow: var(--shadow); max-width: 90vw; }
+  .steal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.78); z-index: 50; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 16px; cursor: pointer; animation: fadein .2s ease-out; }
+  .steal-overlay img { max-width: 88vw; max-height: 72vh; border-radius: var(--radius); box-shadow: 0 8px 40px rgba(0,0,0,.6);
+    animation: pop .35s ease-out; }
+  .steal-overlay .cap { color: var(--white); font-size: 20px; font-weight: 700; text-align: center; padding: 0 20px; }
+  .steal-overlay .sub { color: #bdbdbd; font-size: 13px; }
+  @keyframes fadein { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes pop { from { transform: scale(.85); } to { transform: scale(1); } }
   .lb-legend { color: var(--grey-600); font-size: 12px; margin-top: 10px; }
 
   footer { text-align: center; color: var(--grey-600); font-size: 12px; padding: 0 24px 30px; }
@@ -142,8 +165,8 @@
     .card-title { font-size: 16px; }
     .header-inner { flex-wrap: wrap; }
     .header-inner .me { margin-left: 0; }
-    .lb-head, .lb-row { grid-template-columns: 34px 1fr 44px 44px 52px; gap: 8px; padding: 10px 12px; }
-    .lb-bar, .lb-head .bar-col { display: none; }
+    .lb-head, .lb-row { grid-template-columns: 30px 1fr 36px 36px 44px 44px 72px; gap: 6px; padding: 10px 10px; }
+    .lb-bar, .lb-head .bar-col, .lb-bar-cell { display: none; }
   }
 </style>
 </head>
@@ -211,11 +234,19 @@
       <div class="kpi accent"><div class="num" id="statUsers">–</div><div class="lbl">aktive Teammitglieder</div></div>
       <div class="kpi"><div class="num" id="statArticles">–</div><div class="lbl">bewertete Artikel</div></div>
     </section>
-    <div class="status ok" id="statsInfo">Rangliste nach Anzahl abgegebener Stimmen.</div>
+    <div class="status ok" id="statsInfo">Rangliste nach Punkten.</div>
     <div id="leaderboard"></div>
-    <div class="lb-legend">▲ Relevant · ▼ Nicht relevant. Personen werden anhand des eingegebenen Namens gezählt. Der Zeitraum wird auf dem Tab «News» eingestellt.</div>
+    <div class="lb-legend">Punkte = abgegebene Stimmen ± Diebstahl. ▲ Relevant · ▼ Nicht relevant · ± gestohlene Punkte (+ erhalten, − verloren).
+      Mit «Klauen» nehmen Sie einer Person 1 Punkt weg (Pause: <span id="cdText"></span>). Personen werden anhand des eingegebenen Namens gezählt.
+      Der Zeitraum wird auf dem Tab «News» eingestellt.</div>
+    <div class="reset-row">
+      <button id="resetBtn" class="reset-btn" disabled>Rangliste zurücksetzen</button>
+      <span>Macht für das ganze Team alle gestohlenen Punkte rückgängig. Die Rangliste zeigt danach wieder nur die tatsächlich abgegebenen Stimmen. Die Stimmen selbst und das Team-Ranking bleiben erhalten.</span>
+    </div>
   </section>
 </main>
+
+<div id="toast" class="toast hidden"></div>
 
 <footer>Quelle: Bing News · Es werden nur Schlagzeilen angezeigt; die Artikel öffnen sich beim jeweiligen Medium.</footer>
 
@@ -275,6 +306,16 @@ const FIREBASE_CONFIG = {
   appId: "1:942108559475:web:ab271583a7d831caf88206"
 };
 
+// Punkte klauen (Statistik-Tab)
+const STEAL_IMAGE = "591186.jpg";        // Bild, das beim Klauen erscheint (liegt im Repository)
+const STEAL_COOLDOWN_SECONDS = 60;       // Pause zwischen zwei Diebstählen pro Person
+const STEAL_AMOUNT = 1;                  // Punkte pro Diebstahl
+const STEAL_IMAGE_SECONDS = 3;           // so lange bleibt das Bild sichtbar
+
+// Rangliste zurücksetzen (Statistik-Tab): löscht nur die Diebstähle, die Stimmen bleiben
+const RESET_IMAGE = "f-b-i-raid.gif";    // GIF, das beim Zurücksetzen erscheint (liegt im Repository)
+const RESET_IMAGE_SECONDS = 5;           // so lange bleibt das GIF sichtbar
+
 // So lange wartet die Suche maximal (Sekunden)
 const DEADLINE_SECONDS = 15;
 
@@ -284,7 +325,7 @@ const CACHE_MINUTES = 30;
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-import { getFirestore, collection, doc, setDoc, onSnapshot, deleteField, query, where } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { getFirestore, collection, doc, setDoc, addDoc, getDocs, writeBatch, onSnapshot, deleteField, query, where } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 const $ = id => document.getElementById(id);
 
@@ -303,6 +344,7 @@ const MAX_DAYS = 7;
 let db = null;
 let myId = null;        // anonyme Kennung dieses Browsers
 let votesAll = {};      // Artikel-ID -> Daten aus Firebase (letzte 7 Tage)
+let stealsAll = [];     // Diebstähle aus Firebase (letzte 7 Tage)
 
 // Name im Browser merken
 $("myName").value = localStorage.getItem("newsmonitor_name") || "";
@@ -357,6 +399,12 @@ async function startFirebase() {
         snap.forEach(d => votesAll[d.id] = d.data());
         refreshViews();
       }, err => showNote("Firebase-Fehler beim Lesen: " + err.message));
+      // Diebstähle live mitlesen
+      onSnapshot(query(collection(db, "steals"), where("time", ">=", since)), snap => {
+        stealsAll = [];
+        snap.forEach(d => stealsAll.push(d.data()));
+        refreshViews();
+      }, err => showNote("Firebase-Fehler (Diebstähle): " + err.message));
     });
 
     await signInAnonymously(auth);
@@ -611,15 +659,118 @@ function renderRanking() {
   }
 }
 
-// Statistik: pro Person die Anzahl abgegebener Stimmen, daraus die Rangliste
+// ---- Punkte klauen ----
+const nameKey = n => (n || "").trim().toLowerCase();
+
+let toastTimer = null;
+function toast(text) {
+  const t = $("toast");
+  t.textContent = text;
+  t.classList.remove("hidden");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.add("hidden"), 3500);
+}
+
+// Wie viele Sekunden muss die aktuelle Person noch warten?
+function cooldownLeft() {
+  const mine = stealsAll.filter(x => x.by === myId).map(x => new Date(x.time).getTime());
+  if (!mine.length) return 0;
+  const left = Math.ceil((Math.max(...mine) + STEAL_COOLDOWN_SECONDS * 1000 - Date.now()) / 1000);
+  return Math.max(0, left);
+}
+
+// Bild oder GIF gross einblenden (nur für die Person, die die Aktion auslöst)
+function showOverlay(src, text, seconds) {
+  const overlay = document.createElement("div");
+  overlay.className = "steal-overlay";
+  const img = document.createElement("img");
+  img.src = src;
+  img.alt = "";
+  img.onerror = () => { img.remove(); };          // Datei nicht gefunden: nur Text zeigen
+  const cap = document.createElement("div");
+  cap.className = "cap";
+  cap.textContent = text;
+  const sub = document.createElement("div");
+  sub.className = "sub";
+  sub.textContent = "Zum Schliessen klicken";
+  overlay.append(img, cap, sub);
+  const close = () => overlay.remove();
+  overlay.onclick = close;
+  document.body.append(overlay);
+  setTimeout(close, seconds * 1000);
+}
+
+async function steal(victim) {
+  if (!db || !myId) return;
+  if (!myName()) {
+    alert("Bitte oben rechts zuerst Ihren Namen eingeben.");
+    $("myName").focus();
+    return;
+  }
+  if (nameKey(victim.name) === nameKey(myName())) return;
+  const wait = cooldownLeft();
+  if (wait > 0) { toast("Noch " + wait + " Sekunden Pause, dann können Sie wieder klauen."); return; }
+  if (victim.points < STEAL_AMOUNT) { toast(victim.name + " hat keine Punkte mehr zum Klauen."); return; }
+  try {
+    await addDoc(collection(db, "steals"), {
+      by: myId,
+      thief: myName(),
+      thiefKey: nameKey(myName()),
+      victim: victim.name,
+      victimKey: victim.key,
+      amount: STEAL_AMOUNT,
+      time: new Date().toISOString()
+    });
+    showOverlay(STEAL_IMAGE,
+      "Sie haben " + STEAL_AMOUNT + " Punkt" + (STEAL_AMOUNT === 1 ? "" : "e") + " von " + victim.name + " geklaut!",
+      STEAL_IMAGE_SECONDS);
+  } catch (e) {
+    showNote("Klauen fehlgeschlagen: " + e.message);
+  }
+}
+
+// Rangliste zurücksetzen: löscht alle Diebstähle in Firebase (für das ganze Team).
+// Die abgegebenen Stimmen bleiben unverändert, die Punkte entsprechen danach wieder den echten Stimmen.
+async function resetAll() {
+  if (!db || !myId) return;
+  const ok = confirm("Rangliste für das ganze Team zurücksetzen?\n\n" +
+    "Alle gestohlenen Punkte werden rückgängig gemacht. Die abgegebenen Stimmen und das Team-Ranking bleiben erhalten.\n" +
+    "Das kann nicht rückgängig gemacht werden.");
+  if (!ok) return;
+  const btn = $("resetBtn");
+  btn.disabled = true;
+  try {
+    const snap = await getDocs(collection(db, "steals"));
+    let batch = writeBatch(db), n = 0;
+    for (const d of snap.docs) {
+      batch.delete(d.ref);
+      if (++n % 400 === 0) { await batch.commit(); batch = writeBatch(db); }   // Firebase erlaubt max. 500 pro Paket
+    }
+    if (n % 400 !== 0) await batch.commit();
+    showOverlay(RESET_IMAGE, "Rangliste zurückgesetzt – es zählen wieder nur die echten Stimmen!", RESET_IMAGE_SECONDS);
+  } catch (e) {
+    showNote("Zurücksetzen fehlgeschlagen: " + e.message);
+  } finally {
+    btn.disabled = !(db && myId);
+  }
+}
+$("resetBtn").addEventListener("click", resetAll);
+
+// Statistik: pro Person Stimmen und Diebstähle, daraus Punkte und Rangliste
 function renderStats() {
   const box = $("leaderboard");
   box.innerHTML = "";
   const cutoff = cutoffDate();
-  $("statsInfo").textContent = "Rangliste nach Anzahl abgegebener Stimmen der letzten " + periodText() +
-    ". Aktualisiert sich live.";
+  $("statsInfo").textContent = "Rangliste nach Punkten der letzten " + periodText() + ". Aktualisiert sich live.";
+  $("cdText").textContent = STEAL_COOLDOWN_SECONDS + " Sekunden";
+  $("resetBtn").disabled = !(db && myId);
 
   const users = new Map();   // Name (klein geschrieben) -> Zähler
+  const get = (name) => {
+    const key = nameKey(name) || "unbekannt";
+    if (!users.has(key)) users.set(key, { key, name: (name || "").trim() || "Unbekannt", up: 0, down: 0, stolenIn: 0, stolenOut: 0 });
+    return users.get(key);
+  };
   let totalVotes = 0, articlesVoted = 0;
 
   for (const d of Object.values(votesAll)) {
@@ -627,22 +778,24 @@ function renderStats() {
     const entries = Object.entries(d.votes || {});
     if (entries.length) articlesVoted++;
     for (const [uid, v] of entries) {
-      const name = (d.names?.[uid] || "").trim() || "Unbekannt";
-      const key = name.toLowerCase();
-      if (!users.has(key)) users.set(key, { name, up: 0, down: 0 });
-      const u = users.get(key);
+      const u = get(d.names?.[uid]);
       if (v > 0) u.up++; else u.down++;
       totalVotes++;
     }
+  }
+  for (const st of stealsAll) {
+    if (new Date(st.time).getTime() < cutoff) continue;
+    get(st.thief).stolenIn += st.amount || 1;
+    get(st.victim).stolenOut += st.amount || 1;
   }
 
   $("statVotes").textContent = db ? totalVotes : "–";
   $("statUsers").textContent = db ? users.size : "–";
   $("statArticles").textContent = db ? articlesVoted : "–";
 
-  const rows = [...users.entries()]
-    .map(([key, u]) => ({ key, ...u, total: u.up + u.down }))
-    .sort((a, b) => b.total - a.total || a.name.localeCompare(b.name, "de"));
+  const rows = [...users.values()]
+    .map(u => ({ ...u, cast: u.up + u.down, net: u.stolenIn - u.stolenOut, points: u.up + u.down + u.stolenIn - u.stolenOut }))
+    .sort((a, b) => b.points - a.points || a.name.localeCompare(b.name, "de"));
 
   if (rows.length === 0) {
     const empty = document.createElement("div");
@@ -652,20 +805,22 @@ function renderStats() {
     return;
   }
 
-  const max = rows[0].total;
-  const me = myName().toLowerCase();
+  const maxCast = Math.max(1, ...rows.map(r => r.cast));
+  const me = nameKey(myName());
+  const wait = cooldownLeft();
 
   const table = document.createElement("div");
   table.className = "lb";
   const head = document.createElement("div");
   head.className = "lb-head";
   head.innerHTML = '<div>#</div><div>Name</div><div class="bar-col">Verteilung</div>' +
-    '<div style="text-align:right">▲</div><div style="text-align:right">▼</div><div style="text-align:right">Total</div>';
+    '<div style="text-align:right">▲</div><div style="text-align:right">▼</div>' +
+    '<div style="text-align:right" title="Gestohlene Punkte">±</div><div style="text-align:right">Punkte</div><div></div>';
   table.append(head);
 
-  let place = 0, lastTotal = null;
+  let place = 0, lastPoints = null;
   rows.forEach((r, i) => {
-    if (r.total !== lastTotal) { place = i + 1; lastTotal = r.total; }   // gleiche Anzahl = gleicher Rang
+    if (r.points !== lastPoints) { place = i + 1; lastPoints = r.points; }   // gleiche Punkte = gleicher Rang
     const row = document.createElement("div");
     row.className = "lb-row" + (r.key === me ? " me" : "");
 
@@ -685,23 +840,40 @@ function renderStats() {
     const bar = document.createElement("div");
     bar.className = "lb-bar";
     bar.title = r.up + " relevant, " + r.down + " nicht relevant";
-    bar.style.width = Math.max(8, Math.round(r.total / max * 100)) + "%";
+    bar.style.width = r.cast ? Math.max(8, Math.round(r.cast / maxCast * 100)) + "%" : "0";
     const u = document.createElement("div");
-    u.className = "u"; u.style.width = (r.up / r.total * 100) + "%";
+    u.className = "u"; u.style.width = (r.cast ? r.up / r.cast * 100 : 0) + "%";
     const d = document.createElement("div");
-    d.className = "d"; d.style.width = (r.down / r.total * 100) + "%";
+    d.className = "d"; d.style.width = (r.cast ? r.down / r.cast * 100 : 0) + "%";
     bar.append(u, d);
     const barCell = document.createElement("div");
+    barCell.className = "lb-bar-cell";
     barCell.append(bar);
 
     const nUp = document.createElement("div");
     nUp.className = "lb-num up"; nUp.textContent = r.up;
     const nDown = document.createElement("div");
     nDown.className = "lb-num down"; nDown.textContent = r.down;
-    const nTotal = document.createElement("div");
-    nTotal.className = "lb-num total"; nTotal.textContent = r.total;
+    const nSteal = document.createElement("div");
+    nSteal.className = "lb-num steal " + (r.net > 0 ? "plus" : r.net < 0 ? "minus" : "zero");
+    nSteal.textContent = r.net > 0 ? "+" + r.net : r.net;
+    nSteal.title = r.stolenIn + " geklaut, " + r.stolenOut + " verloren";
+    const nPoints = document.createElement("div");
+    nPoints.className = "lb-num total"; nPoints.textContent = r.points;
 
-    row.append(pos, name, barCell, nUp, nDown, nTotal);
+    const action = document.createElement("div");
+    action.style.textAlign = "right";
+    if (r.key !== me) {
+      const btn = document.createElement("button");
+      btn.className = "steal-btn";
+      btn.textContent = "Klauen";
+      btn.title = "Nimmt " + r.name + " " + STEAL_AMOUNT + " Punkt weg und schreibt ihn Ihnen gut";
+      btn.disabled = !(db && myId) || r.points < STEAL_AMOUNT;
+      btn.onclick = () => steal(r);
+      action.append(btn);
+    }
+
+    row.append(pos, name, barCell, nUp, nDown, nSteal, nPoints, action);
     table.append(row);
   });
   box.append(table);
