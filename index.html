@@ -16,6 +16,7 @@
     --grey-300: #d9d9d9;
     --grey-100: #f4f4f4;
     --white: #ffffff;
+    --green: #2e9e4f;
     --radius: 6px;
     --shadow: 0 1px 2px rgba(0,0,0,.06), 0 4px 16px rgba(0,0,0,.06);
   }
@@ -70,7 +71,7 @@
   /* Status */
   .status { font-size: 13px; color: var(--grey-600); margin: 4px 2px 16px; display: flex; align-items: center; gap: 8px; }
   .status::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--grey-300); }
-  .status.ok::before { background: #2e9e4f; }
+  .status.ok::before { background: var(--green); }
   .status.warn::before { background: #f0a000; }
   .status.busy::before { background: var(--red); animation: pulse 1s infinite; }
   @keyframes pulse { 50% { opacity: .25; } }
@@ -78,12 +79,12 @@
 
   /* Artikelkarten */
   #results, #ranking { display: grid; gap: 10px; }
-  .card { display: flex; flex-wrap: wrap; gap: 0 14px; align-items: center; background: var(--white); border-radius: var(--radius);
+  .card { display: flex; gap: 14px; align-items: center; background: var(--white); border-radius: var(--radius);
     box-shadow: var(--shadow); padding: 12px 18px 12px 12px; border-left: 4px solid transparent;
     transition: transform .12s, box-shadow .12s; }
   .card:hover { transform: translateY(-1px); box-shadow: 0 2px 4px rgba(0,0,0,.08), 0 8px 24px rgba(0,0,0,.08); }
   .card.prio { border-left-color: var(--red); }
-  .card-body { flex: 1 1 0; min-width: 0; text-decoration: none; color: inherit; }
+  .card-body { flex: 1; min-width: 0; text-decoration: none; color: inherit; }
   .card-top { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; font-size: 12px; }
   .source { font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--grey-900); }
   .badge { background: var(--red-soft); color: var(--red-dark); font-weight: 600; padding: 1px 8px; border-radius: 10px; }
@@ -93,39 +94,41 @@
   .empty { background: var(--white); border-radius: var(--radius); padding: 28px; text-align: center; color: var(--grey-600); }
   #failed { color: var(--red-dark); font-size: 13px; margin-top: 18px; }
 
-  /* GIF-Reaktion beim Abstimmen: fährt in der Karte von unten hoch und wieder runter */
-  .reaction { flex-basis: 100%; display: flex; justify-content: center; overflow: hidden;
-    max-height: 0; opacity: 0; transform: translateY(40px);
-    transition: max-height .5s ease, opacity .4s ease, transform .5s ease; }
-  .reaction.show { max-height: 260px; opacity: 1; transform: translateY(0); }
-  .reaction img { width: auto; height: auto; max-width: 100%; max-height: 230px; border-radius: 8px; margin-top: 10px; }
-
   /* Abstimmen */
   .vote { display: flex; flex-direction: column; align-items: center; width: 44px; flex-shrink: 0; }
   .vote button { background: none; color: var(--grey-600); padding: 2px 8px; font-size: 16px; line-height: 1; border-radius: 4px; }
   .vote button:hover { background: var(--grey-100); color: var(--black); }
-  .vote button.up.on { color: #2e9e4f; }
+  .vote button.up.on { color: var(--green); }
   .vote button.down.on { color: var(--red); }
   .vote button:disabled { background: none; color: var(--grey-300); cursor: not-allowed; }
   .vote .score { font-weight: 700; font-size: 15px; }
-  .vote .score.pos { color: #2e9e4f; }
+  .vote .score.pos { color: var(--green); }
   .vote .score.neg { color: var(--red); }
   .voters { color: var(--grey-600); font-size: 12px; margin-top: 4px; }
   .rank { font-size: 20px; font-weight: 700; color: var(--grey-300); width: 28px; text-align: right; flex-shrink: 0; }
 
-  /* Tastatur-Fokus sichtbar */
-  button:focus-visible, .card-body:focus-visible { outline: 2px solid var(--red); outline-offset: 2px; }
-  /* Touch-Geräte: Abstimm-Buttons mindestens 44 x 44 px */
-  @media (pointer: coarse) {
-    .vote { width: 56px; }
-    .vote button { min-width: 44px; min-height: 44px; font-size: 18px; }
-  }
-  /* Wenig Bewegung gewünscht: keine Animationen */
-  @media (prefers-reduced-motion: reduce) {
-    .reaction, .card { transition: none; }
-    .reaction { transform: none; }
-    .status.busy::before { animation: none; }
-  }
+  /* Statistik & Rangliste */
+  .lb { background: var(--white); border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden; }
+  .lb-head, .lb-row { display: grid; grid-template-columns: 48px minmax(120px, 1.2fr) 2fr 56px 56px 64px; gap: 12px;
+    align-items: center; padding: 12px 18px; }
+  .lb-head { background: var(--black); color: var(--white); font-size: 12px; text-transform: uppercase; letter-spacing: .06em; }
+  .lb-row { border-top: 1px solid var(--grey-100); }
+  .lb-row.me { background: var(--red-soft); }
+  .lb-pos { font-size: 18px; font-weight: 700; text-align: center; color: var(--grey-600); }
+  .lb-pos.medal { width: 30px; height: 30px; line-height: 30px; border-radius: 50%; color: var(--white); font-size: 15px; margin: 0 auto; }
+  .lb-pos.p1 { background: #d4a017; }
+  .lb-pos.p2 { background: #9a9a9a; }
+  .lb-pos.p3 { background: #b06a2c; }
+  .lb-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .lb-name small { color: var(--red-dark); font-weight: 600; margin-left: 6px; }
+  .lb-bar { height: 10px; background: var(--grey-100); border-radius: 5px; overflow: hidden; display: flex; }
+  .lb-bar .u { background: var(--green); }
+  .lb-bar .d { background: var(--red); }
+  .lb-num { text-align: right; font-variant-numeric: tabular-nums; }
+  .lb-num.up { color: var(--green); font-weight: 600; }
+  .lb-num.down { color: var(--red); font-weight: 600; }
+  .lb-num.total { font-weight: 700; }
+  .lb-legend { color: var(--grey-600); font-size: 12px; margin-top: 10px; }
 
   footer { text-align: center; color: var(--grey-600); font-size: 12px; padding: 0 24px 30px; }
 
@@ -136,6 +139,8 @@
     .card-title { font-size: 16px; }
     .header-inner { flex-wrap: wrap; }
     .header-inner .me { margin-left: 0; }
+    .lb-head, .lb-row { grid-template-columns: 34px 1fr 44px 44px 52px; gap: 8px; padding: 10px 12px; }
+    .lb-bar, .lb-head .bar-col { display: none; }
   }
 </style>
 </head>
@@ -158,6 +163,7 @@
   <nav class="tabs">
     <button class="tab active" data-tab="news">News</button>
     <button class="tab" data-tab="ranking">Team-Ranking</button>
+    <button class="tab" data-tab="stats">Statistik</button>
   </nav>
 
   <!-- ===== Ansicht 1: News ===== -->
@@ -169,13 +175,13 @@
     </section>
 
     <section class="toolbar">
-      <input type="search" id="filter" aria-label="Ergebnisse filtern" placeholder="Ergebnisse filtern, z. B. Stadtwerk oder NZZ …">
-      <select id="days" aria-label="Zeitraum">
+      <input type="search" id="filter" placeholder="Ergebnisse filtern, z. B. Stadtwerk oder NZZ …">
+      <select id="days">
         <option value="1">Letzte 24 Stunden</option>
         <option value="3">Letzte 3 Tage</option>
         <option value="7">Letzte 7 Tage</option>
       </select>
-      <select id="sort" aria-label="Sortierung">
+      <select id="sort">
         <option value="prio">Sortierung: Quelle &amp; Zeit</option>
         <option value="votes">Sortierung: Team-Bewertung</option>
       </select>
@@ -193,23 +199,26 @@
     <div class="status ok" id="rankingInfo">Alle bewerteten Artikel im gewählten Zeitraum, sortiert nach Stimmen.</div>
     <div id="ranking"></div>
   </section>
+
+  <!-- ===== Ansicht 3: Statistik & Rangliste ===== -->
+  <section id="view-stats" class="hidden">
+    <section class="kpis">
+      <div class="kpi accent"><div class="num" id="statVotes">–</div><div class="lbl">abgegebene Stimmen</div></div>
+      <div class="kpi accent"><div class="num" id="statUsers">–</div><div class="lbl">aktive Teammitglieder</div></div>
+      <div class="kpi"><div class="num" id="statArticles">–</div><div class="lbl">bewertete Artikel</div></div>
+    </section>
+    <div class="status ok" id="statsInfo">Rangliste nach Anzahl abgegebener Stimmen.</div>
+    <div id="leaderboard"></div>
+    <div class="lb-legend">▲ Relevant · ▼ Nicht relevant. Personen werden anhand des eingegebenen Namens gezählt. Der Zeitraum wird auf dem Tab «News» eingestellt.</div>
+  </section>
 </main>
 
-<footer>Quelle: Bing News · Es werden nur Schlagzeilen angezeigt; die Artikel öffnen sich beim jeweiligen Medium. · <span id="ver"></span></footer>
+<footer>Quelle: Bing News · Es werden nur Schlagzeilen angezeigt; die Artikel öffnen sich beim jeweiligen Medium.</footer>
 
 <script type="module">
-// ---------------------------------------------------------------------
-// Sicherheitsnetz: Fehler werden gesammelt (für Tests: window.__errors muss leer bleiben)
-// ---------------------------------------------------------------------
-window.__errors = [];
-window.addEventListener("error", e => { window.__errors.push(String(e.message || e.error)); console.error(e.message || e.error); });
-window.addEventListener("unhandledrejection", e => { window.__errors.push(String(e.reason?.message || e.reason)); console.error(e.reason); });
-
 // =====================================================================
 // EINSTELLUNGEN – hier Suchbegriffe und Quellen anpassen
 // =====================================================================
-const APP_VERSION = "3.1";                 // wird im Footer angezeigt: so sieht man, welche Datei live ist
-const FEATURES = { gifReactions: true };   // false = GIFs aus, alles andere bleibt unverändert
 const CONFIG = {
   organisation: "Stadt Winterthur",
   context_word: "Winterthur",
@@ -267,37 +276,13 @@ const DEADLINE_SECONDS = 15;
 
 // Ergebnisse werden so lange im Browser gespeichert (in Minuten)
 const CACHE_MINUTES = 30;
-
-// GIF-Reaktionen beim Abstimmen (Dateien im Ordner "gifs" im Repository)
-const GIF_UP = "gifs/Eyt8eq.gif";
-const GIF_DOWN = "gifs/yougotthis-beyonce.gif";
-const GIF_SECONDS = 3.5;   // so lange bleibt das GIF sichtbar
 // =====================================================================
 
-// Firebase wird erst in startFirebase() geladen (feste Version). Ist das Netz blockiert,
-// funktioniert die News-Suche trotzdem; nur das Abstimmen ist dann nicht verfügbar.
-const FIREBASE_BASE = "https://www.gstatic.com/firebasejs/10.12.2/";
-let FS = null;   // Firestore-Funktionen, sobald geladen
-
-// Browser-Speicher geschützt (privates Fenster / blockierter oder voller Speicher)
-const store = {
-  get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
-  set(k, v) { try { localStorage.setItem(k, v); return true; } catch (e) { return false; } }
-};
-
-// Nur http(s)-Links zulassen (Schutz vor javascript:-Adressen aus Fremddaten)
-function safeUrl(u) {
-  try {
-    const x = new URL(u);
-    return (x.protocol === "http:" || x.protocol === "https:") ? x.href : "#";
-  } catch (e) { return "#"; }
-}
-
-// Diagnose der letzten Suche (wird bei 0 Treffern angezeigt)
-const DIAG = { raw: 0, dropped: 0, sample: "" };
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+import { getFirestore, collection, doc, setDoc, onSnapshot, deleteField, query, where } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 const $ = id => document.getElementById(id);
-$("ver").textContent = "Version " + APP_VERSION;
 
 $("org").textContent = CONFIG.organisation;
 document.title = "Medienmonitoring " + CONFIG.organisation;
@@ -316,9 +301,9 @@ let myId = null;        // anonyme Kennung dieses Browsers
 let votesAll = {};      // Artikel-ID -> Daten aus Firebase (letzte 7 Tage)
 
 // Name im Browser merken
-$("myName").value = store.get("newsmonitor_name") || "";
+$("myName").value = localStorage.getItem("newsmonitor_name") || "";
 $("myName").addEventListener("input", () => {
-  store.set("newsmonitor_name", $("myName").value.trim());
+  localStorage.setItem("newsmonitor_name", $("myName").value.trim());
   refreshViews();
 });
 const myName = () => $("myName").value.trim();
@@ -353,17 +338,9 @@ function myVote(id) {
 
 async function startFirebase() {
   try {
-    const [appMod, authMod, fsMod] = await Promise.all([
-      import(FIREBASE_BASE + "firebase-app.js"),
-      import(FIREBASE_BASE + "firebase-auth.js"),
-      import(FIREBASE_BASE + "firebase-firestore.js")
-    ]);
-    const { initializeApp } = appMod;
-    const { getAuth, signInAnonymously, onAuthStateChanged } = authMod;
-    FS = fsMod;
     const app = initializeApp(FIREBASE_CONFIG);
     const auth = getAuth(app);
-    db = FS.getFirestore(app);
+    db = getFirestore(app);
 
     onAuthStateChanged(auth, user => {
       if (!user) return;
@@ -371,7 +348,7 @@ async function startFirebase() {
       showNote("");
       // Live-Verbindung: jede Stimme im Team erscheint sofort bei allen
       const since = new Date(Date.now() - MAX_DAYS * 24 * 60 * 60 * 1000).toISOString();
-      FS.onSnapshot(FS.query(FS.collection(db, "votes"), FS.where("published", ">=", since)), snap => {
+      onSnapshot(query(collection(db, "votes"), where("published", ">=", since)), snap => {
         votesAll = {};
         snap.forEach(d => votesAll[d.id] = d.data());
         refreshViews();
@@ -388,98 +365,27 @@ async function startFirebase() {
 
 // Stimme abgeben: +1 oder -1. Nochmals klicken nimmt die Stimme zurück.
 async function vote(a, value) {
-  if (!db || !myId || !FS) return false;
+  if (!db || !myId) return;
   if (!myName()) {
     alert("Bitte oben rechts zuerst Ihren Namen eingeben.");
     $("myName").focus();
-    return false;
+    return;
   }
   const id = articleId(a);
   const remove = myVote(id) === value;
   try {
-    await FS.setDoc(FS.doc(db, "votes", id), {
+    await setDoc(doc(db, "votes", id), {
       title: a.title,
       link: a.link,
       source: a.source,
       sourceUrl: a.sourceUrl || "",
       published: a.date.toISOString(),
-      votes: { [myId]: remove ? FS.deleteField() : value },
-      names: { [myId]: remove ? FS.deleteField() : myName() }
+      votes: { [myId]: remove ? deleteField() : value },
+      names: { [myId]: remove ? deleteField() : myName() }
     }, { merge: true });
-    return true;
   } catch (e) {
     showNote("Stimme konnte nicht gespeichert werden: " + e.message);
-    return false;
   }
-}
-
-// ---------------------------------------------------------------------
-// GIF-Reaktion
-// Nach jeder Stimme zeichnet Firebase alle Karten neu. Darum merken wir uns pro Artikel,
-// welches GIF gerade läuft, und bauen es in der neuen Karte wieder auf.
-// ---------------------------------------------------------------------
-const SLIDE_MS = 600;           // Dauer der Hoch-/Runter-Animation
-const reactions = new Map();    // Artikel-ID -> { gif, alt, start, timer }
-
-const canVote = () => !!(db && myId && FS && myName());
-
-function reactionBoxes(id) {
-  return document.querySelectorAll('.card[data-id="' + id + '"] .reaction');
-}
-
-function slideIn(box, gif, alt) {
-  const img = box.querySelector("img");
-  img.alt = alt;
-  img.src = gif;
-  box.classList.remove("show");
-  void box.offsetWidth;                                   // Startzustand festschreiben
-  const token = box._token = {};                          // wird von endReaction() ungültig gemacht
-  requestAnimationFrame(() => requestAnimationFrame(() => { if (box._token === token) box.classList.add("show"); }));
-}
-
-function playReaction(id, gif, alt) {
-  if (!FEATURES.gifReactions) return;
-  const old = reactions.get(id);
-  if (old) clearTimeout(old.timer);
-  reactions.set(id, { gif, alt, start: Date.now(), timer: setTimeout(() => endReaction(id), GIF_SECONDS * 1000) });
-  reactionBoxes(id).forEach(box => slideIn(box, gif, alt));
-}
-
-function endReaction(id) {
-  const r = reactions.get(id);
-  if (!r) return;
-  clearTimeout(r.timer);
-  reactions.delete(id);
-  reactionBoxes(id).forEach(box => {
-    box._token = null;                                    // ein noch ausstehendes Einblenden abbrechen
-    box.classList.remove("show");                         // fährt wieder nach unten weg
-    setTimeout(() => {
-      if (!box.classList.contains("show")) box.querySelector("img").removeAttribute("src");
-    }, SLIDE_MS);
-  });
-}
-
-// GIF-Bereich einer Karte; läuft für diesen Artikel gerade ein GIF, wird es weitergeführt
-function reactionBox(id) {
-  const box = document.createElement("div");
-  box.className = "reaction";
-  const img = document.createElement("img");
-  img.alt = "";
-  box.append(img);
-  const r = reactions.get(id);
-  if (r) {
-    if (Date.now() - r.start < SLIDE_MS) slideIn(box, r.gif, r.alt);   // Animation läuft noch: neu starten
-    else { img.alt = r.alt; img.src = r.gif; box.classList.add("show"); }
-  }
-  return box;
-}
-
-// Stimme abgeben; GIF sofort zeigen, aber nur wenn die Stimme wirklich abgegeben (nicht zurückgenommen) wird
-function onVote(a, value, gif, alt) {
-  const id = articleId(a);
-  const adding = canVote() && myVote(id) !== value;
-  if (adding) playReaction(id, gif, alt);
-  vote(a, value).then(ok => { if (!ok && adding) endReaction(id); });
 }
 
 // Die Abstimm-Spalte (▲ Zahl ▼) für eine Karte bauen
@@ -491,8 +397,6 @@ function voteBox(a) {
   up.className = "up" + (myVote(id) === 1 ? " on" : "");
   up.textContent = "▲";
   up.title = "Relevant";
-  up.setAttribute("aria-label", "Relevant");
-  up.setAttribute("aria-pressed", myVote(id) === 1 ? "true" : "false");
   const score = document.createElement("div");
   const s = scoreOf(id);
   score.className = "score" + (s > 0 ? " pos" : s < 0 ? " neg" : "");
@@ -501,11 +405,9 @@ function voteBox(a) {
   down.className = "down" + (myVote(id) === -1 ? " on" : "");
   down.textContent = "▼";
   down.title = "Nicht relevant";
-  down.setAttribute("aria-label", "Nicht relevant");
-  down.setAttribute("aria-pressed", myVote(id) === -1 ? "true" : "false");
   up.disabled = down.disabled = !(db && myId);
-  up.onclick = () => onVote(a, 1, GIF_UP, "Reaktion: relevant");
-  down.onclick = () => onVote(a, -1, GIF_DOWN, "Reaktion: nicht relevant");
+  up.onclick = () => vote(a, 1);
+  down.onclick = () => vote(a, -1);
   box.append(up, score, down);
   return box;
 }
@@ -553,10 +455,7 @@ async function fetchQuery(q, signal) {
   const text = await response.text();
   if (!text.includes("<rss")) throw new Error("Keine gültige Antwort");
   const xml = new DOMParser().parseFromString(text, "text/xml");
-  const rawItems = [...xml.getElementsByTagName("item")];
-  DIAG.raw += rawItems.length;
-  if (!DIAG.sample) DIAG.sample = text.replace(/\s+/g, " ").slice(0, 300);
-  const parsed = rawItems.map(item => {
+  return [...xml.getElementsByTagName("item")].map(item => {
     const link = realUrl(item.getElementsByTagName("link")[0]?.textContent || "");
     let host = "";
     try { host = new URL(link).hostname; } catch (e) {}
@@ -568,9 +467,6 @@ async function fetchQuery(q, signal) {
       sourceUrl: host
     };
   });
-  const valid = parsed.filter(a => a.title && !isNaN(a.date.getTime()));   // ohne Titel/gültiges Datum nicht anzeig- oder bewertbar
-  DIAG.dropped += parsed.length - valid.length;
-  return valid;
 }
 
 function isPriority(a) {
@@ -595,12 +491,16 @@ function cutoffDate() {
   return Date.now() - Number($("days").value) * 24 * 60 * 60 * 1000;
 }
 
+function periodText() {
+  const days = Number($("days").value);
+  return days === 1 ? "24 Stunden" : days + " Tage";
+}
+
 // Eine Artikelkarte bauen (wird in beiden Ansichten verwendet)
 function buildCard(a, rank) {
   const id = articleId(a);
   const card = document.createElement("div");
   card.className = "card" + (isPriority(a) ? " prio" : "");
-  card.dataset.id = id;
 
   if (rank) {
     const r = document.createElement("div");
@@ -612,7 +512,7 @@ function buildCard(a, rank) {
 
   const body = document.createElement("a");
   body.className = "card-body";
-  body.href = safeUrl(a.link);
+  body.href = a.link;
   body.target = "_blank";
   body.rel = "noopener";
 
@@ -648,7 +548,6 @@ function buildCard(a, rank) {
   }
 
   card.append(body);
-  card.append(reactionBox(id));   // GIF-Bereich unten in der Karte
   return card;
 }
 
@@ -677,9 +576,7 @@ function render(articles) {
   if (list.length === 0) {
     const empty = document.createElement("div");
     empty.className = "empty";
-    empty.textContent = inPeriod.length ? "Kein Artikel passt zum Filter."
-      : lastArticles.length ? "Keine Artikel im gewählten Zeitraum (" + lastArticles.length + " ältere Treffer). Wählen Sie einen längeren Zeitraum."
-      : "Keine Artikel gefunden: Die Suche hat 0 Treffer geliefert.";
+    empty.textContent = inPeriod.length ? "Kein Artikel passt zum Filter." : "Keine Artikel gefunden.";
     results.append(empty);
   }
 }
@@ -688,10 +585,9 @@ function render(articles) {
 function renderRanking() {
   const box = $("ranking");
   box.innerHTML = "";
-  const days = Number($("days").value);
   const cutoff = cutoffDate();
-  $("rankingInfo").textContent = "Alle bewerteten Artikel der letzten " +
-    (days === 1 ? "24 Stunden" : days + " Tage") + ", sortiert nach Stimmen. Aktualisiert sich live.";
+  $("rankingInfo").textContent = "Alle bewerteten Artikel der letzten " + periodText() +
+    ", sortiert nach Stimmen. Aktualisiert sich live.";
 
   const list = Object.entries(votesAll)
     .filter(([id, d]) => Object.keys(d.votes || {}).length > 0 && new Date(d.published).getTime() >= cutoff)
@@ -711,16 +607,114 @@ function renderRanking() {
   }
 }
 
+// Statistik: pro Person die Anzahl abgegebener Stimmen, daraus die Rangliste
+function renderStats() {
+  const box = $("leaderboard");
+  box.innerHTML = "";
+  const cutoff = cutoffDate();
+  $("statsInfo").textContent = "Rangliste nach Anzahl abgegebener Stimmen der letzten " + periodText() +
+    ". Aktualisiert sich live.";
+
+  const users = new Map();   // Name (klein geschrieben) -> Zähler
+  let totalVotes = 0, articlesVoted = 0;
+
+  for (const d of Object.values(votesAll)) {
+    if (new Date(d.published).getTime() < cutoff) continue;
+    const entries = Object.entries(d.votes || {});
+    if (entries.length) articlesVoted++;
+    for (const [uid, v] of entries) {
+      const name = (d.names?.[uid] || "").trim() || "Unbekannt";
+      const key = name.toLowerCase();
+      if (!users.has(key)) users.set(key, { name, up: 0, down: 0 });
+      const u = users.get(key);
+      if (v > 0) u.up++; else u.down++;
+      totalVotes++;
+    }
+  }
+
+  $("statVotes").textContent = db ? totalVotes : "–";
+  $("statUsers").textContent = db ? users.size : "–";
+  $("statArticles").textContent = db ? articlesVoted : "–";
+
+  const rows = [...users.entries()]
+    .map(([key, u]) => ({ key, ...u, total: u.up + u.down }))
+    .sort((a, b) => b.total - a.total || a.name.localeCompare(b.name, "de"));
+
+  if (rows.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "empty";
+    empty.textContent = db ? "In diesem Zeitraum wurde noch nicht abgestimmt." : "Abstimmen ist noch nicht aktiv.";
+    box.append(empty);
+    return;
+  }
+
+  const max = rows[0].total;
+  const me = myName().toLowerCase();
+
+  const table = document.createElement("div");
+  table.className = "lb";
+  const head = document.createElement("div");
+  head.className = "lb-head";
+  head.innerHTML = '<div>#</div><div>Name</div><div class="bar-col">Verteilung</div>' +
+    '<div style="text-align:right">▲</div><div style="text-align:right">▼</div><div style="text-align:right">Total</div>';
+  table.append(head);
+
+  let place = 0, lastTotal = null;
+  rows.forEach((r, i) => {
+    if (r.total !== lastTotal) { place = i + 1; lastTotal = r.total; }   // gleiche Anzahl = gleicher Rang
+    const row = document.createElement("div");
+    row.className = "lb-row" + (r.key === me ? " me" : "");
+
+    const pos = document.createElement("div");
+    pos.className = "lb-pos" + (place <= 3 ? " medal p" + place : "");
+    pos.textContent = place;
+
+    const name = document.createElement("div");
+    name.className = "lb-name";
+    name.textContent = r.name;
+    if (r.key === me) {
+      const you = document.createElement("small");
+      you.textContent = "Sie";
+      name.append(you);
+    }
+
+    const bar = document.createElement("div");
+    bar.className = "lb-bar";
+    bar.title = r.up + " relevant, " + r.down + " nicht relevant";
+    bar.style.width = Math.max(8, Math.round(r.total / max * 100)) + "%";
+    const u = document.createElement("div");
+    u.className = "u"; u.style.width = (r.up / r.total * 100) + "%";
+    const d = document.createElement("div");
+    d.className = "d"; d.style.width = (r.down / r.total * 100) + "%";
+    bar.append(u, d);
+    const barCell = document.createElement("div");
+    barCell.append(bar);
+
+    const nUp = document.createElement("div");
+    nUp.className = "lb-num up"; nUp.textContent = r.up;
+    const nDown = document.createElement("div");
+    nDown.className = "lb-num down"; nDown.textContent = r.down;
+    const nTotal = document.createElement("div");
+    nTotal.className = "lb-num total"; nTotal.textContent = r.total;
+
+    row.append(pos, name, barCell, nUp, nDown, nTotal);
+    table.append(row);
+  });
+  box.append(table);
+}
+
 function refreshViews() {
   render(lastArticles);
   renderRanking();
+  renderStats();
 }
 
 // Tabs umschalten
 document.querySelectorAll(".tab").forEach(tab => tab.addEventListener("click", () => {
   document.querySelectorAll(".tab").forEach(t => t.classList.toggle("active", t === tab));
-  $("view-news").classList.toggle("hidden", tab.dataset.tab !== "news");
-  $("view-ranking").classList.toggle("hidden", tab.dataset.tab !== "ranking");
+  for (const name of ["news", "ranking", "stats"]) {
+    $("view-" + name).classList.toggle("hidden", tab.dataset.tab !== name);
+  }
 }));
 
 // =====================================================================
@@ -729,7 +723,7 @@ document.querySelectorAll(".tab").forEach(tab => tab.addEventListener("click", (
 
 // Gespeichert werden immer alle Treffer; der Zeitraum wird erst bei der Anzeige gefiltert
 function cacheKey() {
-  return "newsmonitor_v2_" + $("full").checked;
+  return "newsmonitor_bing_" + $("full").checked;
 }
 
 function showStatus(time, failedCount, total, fromCache) {
@@ -742,13 +736,10 @@ function showStatus(time, failedCount, total, fromCache) {
 
 function loadCache() {
   try {
-    const data = JSON.parse(store.get(cacheKey()) || "null");
-    if (!data || typeof data.time !== "number" || !Array.isArray(data.articles)) return null;
-    data.articles = data.articles
-      .filter(a => a && typeof a.title === "string")
-      .map(a => ({ ...a, date: new Date(a.date) }))
-      .filter(a => !isNaN(a.date.getTime()));
-    return data.articles.length ? data : null;   // leere oder kaputte Daten nie anzeigen
+    const data = JSON.parse(localStorage.getItem(cacheKey()));
+    if (!data) return null;
+    data.articles.forEach(a => a.date = new Date(a.date));
+    return data;
   } catch (e) {
     return null;
   }
@@ -772,7 +763,6 @@ async function run() {
   const articles = new Map();
   const failed = [];
   let done = 0;
-  DIAG.raw = 0; DIAG.dropped = 0; DIAG.sample = "";
 
   const previous = loadCache();
   button.disabled = true;
@@ -780,59 +770,36 @@ async function run() {
   status.className = "status busy";
   status.textContent = "Suche läuft …";
 
-  let total = queries.length;
-  let usedFallback = false;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), DEADLINE_SECONDS * 1000);
 
-  // Führt eine Gruppe von Suchen parallel aus (mit Zeitlimit und einem erneuten Versuch pro Suche)
-  async function runBatch(qs) {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), DEADLINE_SECONDS * 1000);
-    await Promise.all(qs.map(async q => {
-      for (let attempt = 1; attempt <= 2; attempt++) {
-        try {
-          for (const a of await fetchQuery(q, controller.signal)) {
-            if (!articles.has(a.link)) articles.set(a.link, a);
-          }
-          break;
-        } catch (e) {
-          if (attempt === 2 || controller.signal.aborted) { failed.push(q); break; }
-          await new Promise(r => setTimeout(r, 800));
+  await Promise.all(queries.map(async q => {
+    // Bei Fehler einmal kurz erneut versuchen
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        for (const a of await fetchQuery(q, controller.signal)) {
+          if (!articles.has(a.link)) articles.set(a.link, a);
         }
+        break;
+      } catch (e) {
+        if (attempt === 2 || controller.signal.aborted) { failed.push(q); break; }
+        await new Promise(r => setTimeout(r, 800));
       }
-      done++;
-      if (articles.size > 0 || !previous) render(articles.values());
-      status.textContent = (usedFallback ? "Ersatzsuche läuft … (" : "Suche läuft … (") + done + " von " + total + " fertig)";
-    }));
-    clearTimeout(timer);
-  }
-
-  await runBatch(queries);
-
-  // Ersatzsuche: Liefern die genauen Suchen (mit Anführungszeichen und OR) gar nichts, versuchen wir einfache Suchbegriffe
-  if (articles.size === 0) {
-    const simple = CONFIG.direct_terms.slice(0, 5).concat([CONFIG.context_word]);
-    usedFallback = true; total = simple.length; done = 0; failed.length = 0;
-    await runBatch(simple);
-  }
+    }
+    done++;
+    if (articles.size > 0 || !previous) render(articles.values());
+    status.textContent = "Suche läuft … (" + done + " von " + queries.length + " fertig)";
+  }));
+  clearTimeout(timer);
 
   const list = [...articles.values()];
-  if (list.length > 0) {
-    store.set(cacheKey(), JSON.stringify({ time: Date.now(), articles: list }));
+  if (list.length > 0 || failed.length === 0) {
+    localStorage.setItem(cacheKey(), JSON.stringify({ time: Date.now(), articles: list }));
     render(list);
   } else if (previous) {
     render(previous.articles);  // Suche fehlgeschlagen: alte Ergebnisse behalten
-  } else {
-    render([]);
   }
-  showStatus(Date.now(), failed.length, total, false);
-  if (usedFallback && list.length > 0) {
-    status.textContent += " · Ersatzsuche mit einfachen Suchbegriffen (die genauen Suchen lieferten 0 Treffer)";
-  }
-  if (list.length === 0 && failed.length === 0) {
-    $("failed").textContent = "Hinweis: Alle Suchen (inkl. Ersatzsuche) wurden beantwortet. Einträge insgesamt: " + DIAG.raw +
-      ", davon unbrauchbar (ohne Titel oder Datum): " + DIAG.dropped +
-      (DIAG.raw === 0 ? ". Anfang der Worker-Antwort: " + DIAG.sample : ".");
-  }
+  showStatus(Date.now(), failed.length, queries.length, false);
   if (failed.length) {
     $("failed").textContent = "Ohne Antwort (nochmals «Aktualisieren» klicken): " + failed.join("  |  ");
   }
