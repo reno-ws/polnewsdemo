@@ -78,12 +78,12 @@
 
   /* Artikelkarten */
   #results, #ranking { display: grid; gap: 10px; }
-  .card { display: flex; gap: 14px; align-items: center; background: var(--white); border-radius: var(--radius);
+  .card { display: flex; flex-wrap: wrap; gap: 0 14px; align-items: center; background: var(--white); border-radius: var(--radius);
     box-shadow: var(--shadow); padding: 12px 18px 12px 12px; border-left: 4px solid transparent;
     transition: transform .12s, box-shadow .12s; }
   .card:hover { transform: translateY(-1px); box-shadow: 0 2px 4px rgba(0,0,0,.08), 0 8px 24px rgba(0,0,0,.08); }
   .card.prio { border-left-color: var(--red); }
-  .card-body { flex: 1; min-width: 0; text-decoration: none; color: inherit; }
+  .card-body { flex: 1 1 0; min-width: 0; text-decoration: none; color: inherit; }
   .card-top { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; font-size: 12px; }
   .source { font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--grey-900); }
   .badge { background: var(--red-soft); color: var(--red-dark); font-weight: 600; padding: 1px 8px; border-radius: 10px; }
@@ -92,6 +92,13 @@
   .card-body:hover .card-title { color: var(--red-dark); }
   .empty { background: var(--white); border-radius: var(--radius); padding: 28px; text-align: center; color: var(--grey-600); }
   #failed { color: var(--red-dark); font-size: 13px; margin-top: 18px; }
+
+  /* GIF-Reaktion beim Abstimmen: fährt in der Karte von unten hoch und wieder runter */
+  .reaction { flex-basis: 100%; display: flex; justify-content: center; overflow: hidden;
+    max-height: 0; opacity: 0; transform: translateY(40px);
+    transition: max-height .5s ease, opacity .4s ease, transform .5s ease; }
+  .reaction.show { max-height: 260px; opacity: 1; transform: translateY(0); }
+  .reaction img { width: 220px; max-width: 100%; border-radius: 8px; margin-top: 10px; }
 
   /* Abstimmen */
   .vote { display: flex; flex-direction: column; align-items: center; width: 44px; flex-shrink: 0; }
@@ -237,6 +244,11 @@ const DEADLINE_SECONDS = 15;
 
 // Ergebnisse werden so lange im Browser gespeichert (in Minuten)
 const CACHE_MINUTES = 30;
+
+// GIF-Reaktionen beim Abstimmen (Dateien im Ordner "gifs" im Repository)
+const GIF_UP = "gifs/Eyt8eq.gif";
+const GIF_DOWN = "gifs/yougotthis-beyonce.gif";
+const GIF_SECONDS = 3.5;   // so lange bleibt das GIF sichtbar
 // =====================================================================
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
@@ -349,8 +361,54 @@ async function vote(a, value) {
   }
 }
 
+// ---------------------------------------------------------------------
+// GIF-Reaktion
+// Die Karten werden nach jeder Stimme neu gezeichnet (Live-Update von Firebase).
+// Darum merken wir uns, welche Karte gerade ein GIF zeigt, damit es dabei nicht verschwindet.
+// ---------------------------------------------------------------------
+let reaction = null;      // { id, gif, until }
+let reactionTimer = null;
+
+function playReaction(card, id, gif) {
+  reaction = { id, gif, until: Date.now() + GIF_SECONDS * 1000 };
+  const box = card.querySelector(".reaction");
+  const img = box.querySelector("img");
+  img.src = gif;
+  box.classList.remove("show");
+  void box.offsetWidth;                 // Animation neu starten
+  requestAnimationFrame(() => box.classList.add("show"));
+  clearTimeout(reactionTimer);
+  reactionTimer = setTimeout(hideReaction, GIF_SECONDS * 1000);
+}
+
+function hideReaction() {
+  if (!reaction) return;
+  const id = reaction.id;
+  reaction = null;
+  document.querySelectorAll('.card[data-id="' + id + '"] .reaction.show').forEach(box => {
+    box.classList.remove("show");     // fährt wieder nach unten weg
+    setTimeout(() => {
+      if (!box.classList.contains("show")) box.querySelector("img").removeAttribute("src");
+    }, 600);
+  });
+}
+
+function reactionBox(id) {
+  const box = document.createElement("div");
+  box.className = "reaction";
+  const img = document.createElement("img");
+  img.alt = "";
+  box.append(img);
+  // Falls die Karte neu gezeichnet wird, während das GIF läuft: sichtbar lassen
+  if (reaction && reaction.id === id && Date.now() < reaction.until) {
+    img.src = reaction.gif;
+    box.classList.add("show");
+  }
+  return box;
+}
+
 // Die Abstimm-Spalte (▲ Zahl ▼) für eine Karte bauen
-function voteBox(a) {
+function voteBox(a, card) {
   const id = articleId(a);
   const box = document.createElement("div");
   box.className = "vote";
@@ -367,8 +425,17 @@ function voteBox(a) {
   down.textContent = "▼";
   down.title = "Nicht relevant";
   up.disabled = down.disabled = !(db && myId);
-  up.onclick = () => vote(a, 1);
-  down.onclick = () => vote(a, -1);
+
+  // GIF nur zeigen, wenn eine Stimme abgegeben (nicht zurückgenommen) wird
+  up.onclick = () => {
+    if (myName() && myVote(id) !== 1) playReaction(card, id, GIF_UP);
+    vote(a, 1);
+  };
+  down.onclick = () => {
+    if (myName() && myVote(id) !== -1) playReaction(card, id, GIF_DOWN);
+    vote(a, -1);
+  };
+
   box.append(up, score, down);
   return box;
 }
@@ -457,6 +524,7 @@ function buildCard(a, rank) {
   const id = articleId(a);
   const card = document.createElement("div");
   card.className = "card" + (isPriority(a) ? " prio" : "");
+  card.dataset.id = id;
 
   if (rank) {
     const r = document.createElement("div");
@@ -464,7 +532,7 @@ function buildCard(a, rank) {
     r.textContent = rank;
     card.append(r);
   }
-  card.append(voteBox(a));
+  card.append(voteBox(a, card));
 
   const body = document.createElement("a");
   body.className = "card-body";
@@ -504,6 +572,7 @@ function buildCard(a, rank) {
   }
 
   card.append(body);
+  card.append(reactionBox(id));   // GIF-Bereich unten in der Karte
   return card;
 }
 
