@@ -651,7 +651,7 @@ document.querySelectorAll(".tab").forEach(tab => tab.addEventListener("click", (
 
 // Gespeichert werden immer alle Treffer; der Zeitraum wird erst bei der Anzeige gefiltert
 function cacheKey() {
-  return "newsmonitor_bing_" + $("full").checked;
+  return "newsmonitor_v2_" + $("full").checked;
 }
 
 function showStatus(time, failedCount, total, fromCache) {
@@ -665,7 +665,7 @@ function showStatus(time, failedCount, total, fromCache) {
 function loadCache() {
   try {
     const data = JSON.parse(localStorage.getItem(cacheKey()));
-    if (!data) return null;
+    if (!data || !data.articles?.length) return null;   // leere Ergebnisse nie aus dem Speicher zeigen
     data.articles.forEach(a => a.date = new Date(a.date));
     return data;
   } catch (e) {
@@ -721,11 +721,13 @@ async function run() {
   clearTimeout(timer);
 
   const list = [...articles.values()];
-  if (list.length > 0 || failed.length === 0) {
+  if (list.length > 0) {
     localStorage.setItem(cacheKey(), JSON.stringify({ time: Date.now(), articles: list }));
     render(list);
   } else if (previous) {
     render(previous.articles);  // Suche fehlgeschlagen: alte Ergebnisse behalten
+  } else {
+    render([]);
   }
   showStatus(Date.now(), failed.length, queries.length, false);
   if (failed.length) {
