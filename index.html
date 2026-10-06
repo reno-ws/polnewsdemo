@@ -32,4 +32,358 @@
   .brand small { display: block; color: #bdbdbd; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; }
   .brand strong { font-size: 22px; font-weight: 700; letter-spacing: -.01em; }
 
-  main { max-width: 1080px; margin: 0 auto; padding
+  main { max-width: 1080px; margin: 0 auto; padding: 28px 24px 60px; }
+
+  /* Kennzahlen */
+  .kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 20px; }
+  .kpi { background: var(--white); border-radius: var(--radius); box-shadow: var(--shadow); padding: 16px 20px; border-top: 3px solid var(--black); }
+  .kpi.accent { border-top-color: var(--red); }
+  .kpi .num { font-size: 30px; font-weight: 700; line-height: 1.1; }
+  .kpi .lbl { color: var(--grey-600); font-size: 13px; }
+
+  /* Werkzeugleiste */
+  .toolbar { background: var(--white); border-radius: var(--radius); box-shadow: var(--shadow);
+    padding: 14px 16px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
+  .toolbar input[type=search], .toolbar select {
+    font: inherit; padding: 9px 12px; border: 1px solid var(--grey-300); border-radius: var(--radius); background: var(--white); }
+  .toolbar input[type=search] { flex: 1; min-width: 200px; }
+  .toolbar input:focus, .toolbar select:focus { outline: 2px solid var(--red); outline-offset: -1px; border-color: var(--red); }
+  .check { display: flex; align-items: center; gap: 6px; color: var(--grey-900); font-size: 14px; cursor: pointer; }
+  .check input { accent-color: var(--red); width: 16px; height: 16px; }
+  button { font: inherit; font-weight: 600; background: var(--red); color: var(--white); border: none;
+    border-radius: var(--radius); padding: 9px 18px; cursor: pointer; transition: background .15s; }
+  button:hover { background: var(--red-dark); }
+  button:disabled { background: var(--grey-300); color: var(--grey-600); cursor: default; }
+
+  /* Status */
+  .status { font-size: 13px; color: var(--grey-600); margin: 4px 2px 16px; display: flex; align-items: center; gap: 8px; }
+  .status::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--grey-300); }
+  .status.ok::before { background: #2e9e4f; }
+  .status.warn::before { background: #f0a000; }
+  .status.busy::before { background: var(--red); animation: pulse 1s infinite; }
+  @keyframes pulse { 50% { opacity: .25; } }
+
+  /* Artikelkarten */
+  #results { display: grid; gap: 10px; }
+  .card { display: block; background: var(--white); border-radius: var(--radius); box-shadow: var(--shadow);
+    padding: 14px 18px; text-decoration: none; color: inherit; border-left: 4px solid transparent;
+    transition: transform .12s, box-shadow .12s; }
+  .card:hover { transform: translateY(-1px); box-shadow: 0 2px 4px rgba(0,0,0,.08), 0 8px 24px rgba(0,0,0,.08); }
+  .card.prio { border-left-color: var(--red); }
+  .card-top { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; font-size: 12px; }
+  .source { font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--grey-900); }
+  .badge { background: var(--red-soft); color: var(--red-dark); font-weight: 600; padding: 1px 8px; border-radius: 10px; }
+  .time { margin-left: auto; color: var(--grey-600); }
+  .card-title { font-size: 17px; font-weight: 600; line-height: 1.35; }
+  .card:hover .card-title { color: var(--red-dark); }
+  .empty { background: var(--white); border-radius: var(--radius); padding: 28px; text-align: center; color: var(--grey-600); }
+  #failed { color: var(--red-dark); font-size: 13px; margin-top: 18px; }
+
+  footer { text-align: center; color: var(--grey-600); font-size: 12px; padding: 0 24px 30px; }
+
+  @media (max-width: 640px) {
+    .kpis { grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+    .kpi { padding: 12px; } .kpi .num { font-size: 22px; }
+    .card-title { font-size: 16px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-inner">
+    <div class="mark"></div>
+    <div class="brand">
+      <small>Medienmonitoring</small>
+      <strong id="org">Stadt Winterthur</strong>
+    </div>
+  </div>
+</header>
+
+<main>
+  <section class="kpis">
+    <div class="kpi accent"><div class="num" id="kpiTotal">–</div><div class="lbl">Artikel</div></div>
+    <div class="kpi accent"><div class="num" id="kpiPrio">–</div><div class="lbl">aus Prioritätsquellen</div></div>
+    <div class="kpi"><div class="num" id="kpiSources">–</div><div class="lbl">verschiedene Quellen</div></div>
+  </section>
+
+  <section class="toolbar">
+    <input type="search" id="filter" placeholder="Ergebnisse filtern, z. B. Stadtwerk oder NZZ …">
+    <select id="days">
+      <option value="1">Letzte 24 Stunden</option>
+      <option value="3">Letzte 3 Tage</option>
+      <option value="7">Letzte 7 Tage</option>
+    </select>
+    <label class="check"><input type="checkbox" id="full"> Kontextbegriffe</label>
+    <button id="refresh">Aktualisieren</button>
+  </section>
+
+  <div id="status" class="status">Lade …</div>
+  <div id="results"></div>
+  <div id="failed"></div>
+</main>
+
+<footer>Quelle: Google News · Es werden nur Schlagzeilen angezeigt; die Artikel öffnen sich beim jeweiligen Medium.</footer>
+
+<script>
+// =====================================================================
+// EINSTELLUNGEN – hier Suchbegriffe und Quellen anpassen
+// =====================================================================
+const CONFIG = {
+  organisation: "Stadt Winterthur",
+  context_word: "Winterthur",
+
+  // Zählen immer
+  direct_terms: [
+    "Stadt Winterthur", "Stadtwerk Winterthur", "Stadtpolizei Winterthur",
+    "Stapo Winterthur", "Stadtrat Winterthur", "Winterthurer Stadtrat",
+    "Stadtparlament Winterthur", "Winterthurer Stadtpräsident", "Stadtbus Winterthur",
+    "Stadtgrün Winterthur", "Schutz & Intervention Winterthur", "Feuerwehr Winterthur",
+    "Winterthurer Bibliotheken", "Winterthurer Schulpflege"
+  ],
+
+  // Zählen nur zusammen mit "Winterthur" (nur wenn Häkchen gesetzt)
+  context_terms: [
+    "Stadtwerk", "Stadtpolizei", "Stapo", "Stadtbus", "Stadtrat", "Stadtparlament",
+    "Stadtkanzlei", "Departement Präsidiales", "Departement Finanzen",
+    "Departement Bau und Mobilität", "Departement Sicherheit und Umwelt",
+    "Departement Schule und Sport", "Departement Soziales", "Departement Technische Betriebe",
+    "Amt für Stadtentwicklung", "Amt für Kultur", "Personalamt", "Finanzamt", "Steueramt",
+    "Informatikdienste", "Amt für Baubewilligungen", "Amt für Städtebau", "Tiefbauamt",
+    "Stadtrichteramt", "Umwelt- und Gesundheitsschutz", "Schulamt", "Sportamt",
+    "Soziale Dienste", "Alter und Pflege", "Zivilschutz", "Stadtarchiv", "KESB",
+    "Kindes- und Erwachsenenschutzbehörde", "Sozialhilfebehörde", "Ombudsstelle",
+    "Datenschutzstelle", "Finanzkontrolle", "Friedensrichteramt", "Stadtammannamt",
+    "Betreibungsamt"
+  ],
+
+  // Diese Quellen werden zuerst angezeigt (★)
+  priority_sources: [
+    "landbote.ch", "nzz.ch", "tagesanzeiger.ch", "srf.ch", "20min.ch", "watson.ch",
+    "blick.ch", "nau.ch", "zueritoday.ch", "toponline.ch", "inside-it.ch", "netzwoche.ch"
+  ],
+
+  days_back: 1
+};
+
+// Spätestens nach so vielen Sekunden werden die Ergebnisse angezeigt
+const DEADLINE_SECONDS = 8;
+
+// Ergebnisse werden so lange im Browser gespeichert (in Minuten)
+const CACHE_MINUTES = 60;
+// =====================================================================
+
+// Hilfsdienste ("Proxys"), über die der Browser Google News abrufen darf.
+// Alle werden gleichzeitig gefragt; die schnellste Antwort gewinnt.
+const PROXIES = [
+  url => "https://corsproxy.io/?url=" + encodeURIComponent(url),
+  url => "https://api.allorigins.win/raw?url=" + encodeURIComponent(url),
+  url => "https://api.codetabs.com/v1/proxy?quest=" + encodeURIComponent(url)
+];
+
+document.getElementById("org").textContent = CONFIG.organisation;
+document.title = "Medienmonitoring " + CONFIG.organisation;
+document.getElementById("days").value = String(CONFIG.days_back);
+
+// 1) Suchanfragen bilden
+function buildQueries(full) {
+  const quote = t => '"' + t + '"';
+  const queries = [];
+  for (let i = 0; i < CONFIG.direct_terms.length; i += 6) {
+    queries.push(CONFIG.direct_terms.slice(i, i + 6).map(quote).join(" OR "));
+  }
+  if (full) {
+    for (let i = 0; i < CONFIG.context_terms.length; i += 3) {
+      queries.push(CONFIG.context_word + " (" +
+        CONFIG.context_terms.slice(i, i + 3).map(quote).join(" OR ") + ")");
+    }
+  }
+  return queries;
+}
+
+// 2) Eine Suche: alle Proxys gleichzeitig, erste gültige Antwort zählt
+async function fetchQuery(query, days, signal) {
+  const url = "https://news.google.com/rss/search?q=" +
+    encodeURIComponent(query + " when:" + days + "d") + "&hl=de&gl=CH&ceid=CH:de";
+  const text = await Promise.any(PROXIES.map(async proxy => {
+    const response = await fetch(proxy(url), { signal });
+    if (!response.ok) throw new Error("HTTP " + response.status);
+    const t = await response.text();
+    if (!t.includes("<rss")) throw new Error("Keine gültige Antwort");
+    return t;
+  }));
+  const xml = new DOMParser().parseFromString(text, "text/xml");
+  return [...xml.querySelectorAll("item")].map(item => {
+    const source = item.querySelector("source");
+    return {
+      title: item.querySelector("title")?.textContent || "",
+      link: item.querySelector("link")?.textContent || "",
+      date: new Date(item.querySelector("pubDate")?.textContent),
+      source: source ? source.textContent : "",
+      sourceUrl: source ? source.getAttribute("url") || "" : ""
+    };
+  });
+}
+
+function isPriority(a) {
+  return CONFIG.priority_sources.some(p => a.sourceUrl.includes(p));
+}
+
+// 3) Ergebnisliste anzeigen (als Karten), inkl. Textfilter und Kennzahlen
+let lastArticles = [];
+
+function timeAgo(date) {
+  const min = Math.round((Date.now() - date) / 60000);
+  if (min < 60) return "vor " + Math.max(min, 1) + " Min.";
+  const h = Math.round(min / 60);
+  if (h < 24) return "vor " + h + " Std.";
+  return date.toLocaleDateString("de-CH");
+}
+
+// Google hängt " - Quelle" an den Titel an; das entfernen wir für die Anzeige
+function cleanTitle(a) {
+  const suffix = " - " + a.source;
+  return a.title.endsWith(suffix) ? a.title.slice(0, -suffix.length) : a.title;
+}
+
+function render(articles) {
+  lastArticles = [...articles];
+  const filter = document.getElementById("filter").value.trim().toLowerCase();
+  const results = document.getElementById("results");
+  results.innerHTML = "";
+
+  const list = lastArticles
+    .filter(a => !filter || (a.title + " " + a.source).toLowerCase().includes(filter))
+    .sort((a, b) => (isPriority(b) - isPriority(a)) || (b.date - a.date));
+
+  // Kennzahlen
+  document.getElementById("kpiTotal").textContent = lastArticles.length;
+  document.getElementById("kpiPrio").textContent = lastArticles.filter(isPriority).length;
+  document.getElementById("kpiSources").textContent = new Set(lastArticles.map(a => a.source)).size;
+
+  for (const a of list) {
+    const card = document.createElement("a");
+    card.className = "card" + (isPriority(a) ? " prio" : "");
+    card.href = a.link;
+    card.target = "_blank";
+    card.rel = "noopener";
+
+    const top = document.createElement("div");
+    top.className = "card-top";
+    const source = document.createElement("span");
+    source.className = "source";
+    source.textContent = a.source || "Unbekannte Quelle";
+    top.append(source);
+    if (isPriority(a)) {
+      const badge = document.createElement("span");
+      badge.className = "badge";
+      badge.textContent = "Priorität";
+      top.append(badge);
+    }
+    const time = document.createElement("span");
+    time.className = "time";
+    time.textContent = timeAgo(a.date);
+    time.title = a.date.toLocaleString("de-CH");
+    top.append(time);
+
+    const title = document.createElement("div");
+    title.className = "card-title";
+    title.textContent = cleanTitle(a);
+
+    card.append(top, title);
+    results.append(card);
+  }
+
+  if (list.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "empty";
+    empty.textContent = lastArticles.length ? "Kein Artikel passt zum Filter." : "Keine Artikel gefunden.";
+    results.append(empty);
+  }
+}
+
+// 4) Zwischenspeicher im Browser
+function cacheKey() {
+  return "newsmonitor_" + document.getElementById("days").value + "_" +
+    document.getElementById("full").checked;
+}
+
+function showStatus(count, time, failedCount, total, fromCache) {
+  const status = document.getElementById("status");
+  status.className = "status" + (failedCount ? " warn" : " ok");
+  status.textContent = "Stand " + new Date(time).toLocaleString("de-CH", { dateStyle: "short", timeStyle: "short" }) +
+    (fromCache ? " · aus Zwischenspeicher" : "") +
+    (failedCount ? " · " + failedCount + " von " + total + " Suchen ohne Antwort" : "");
+}
+
+function showOrSearch() {
+  try {
+    const data = JSON.parse(localStorage.getItem(cacheKey()));
+    if (data && Date.now() - data.time < CACHE_MINUTES * 60 * 1000) {
+      data.articles.forEach(a => a.date = new Date(a.date));
+      document.getElementById("failed").textContent = "";
+      render(data.articles);
+      showStatus(data.articles.length, data.time, 0, 0, true);
+      return;
+    }
+  } catch (e) { /* kein gültiger Speicher */ }
+  run();
+}
+
+// 5) Alle Suchen gleichzeitig starten, nach DEADLINE_SECONDS hart abbrechen
+async function run() {
+  const days = Number(document.getElementById("days").value);
+  const queries = buildQueries(document.getElementById("full").checked);
+  const button = document.getElementById("refresh");
+  const status = document.getElementById("status");
+  const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
+  const articles = new Map();
+  const failed = [];
+  let done = 0;
+
+  button.disabled = true;
+  render([]);
+  document.getElementById("results").innerHTML = "";
+  document.getElementById("failed").textContent = "";
+  status.className = "status busy";
+  status.textContent = "Suche läuft …";
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), DEADLINE_SECONDS * 1000);
+
+  await Promise.all(queries.map(async q => {
+    try {
+      for (const a of await fetchQuery(q, days, controller.signal)) {
+        if (a.date.getTime() >= cutoff && !articles.has(a.title)) articles.set(a.title, a);
+      }
+    } catch (e) {
+      failed.push(q);
+    }
+    done++;
+    render(articles.values());
+    status.textContent = "Suche läuft … (" + done + " von " + queries.length + " fertig) · " +
+      articles.size + " Artikel bisher";
+  }));
+  clearTimeout(timer);
+
+  const list = [...articles.values()];
+  if (failed.length === 0) {
+    localStorage.setItem(cacheKey(), JSON.stringify({ time: Date.now(), articles: list }));
+  }
+  showStatus(list.length, Date.now(), failed.length, queries.length, false);
+  if (failed.length) {
+    document.getElementById("failed").textContent =
+      "Ohne Antwort (nochmals «Aktualisieren» klicken): " + failed.join("  |  ");
+  }
+  button.disabled = false;
+}
+
+document.getElementById("refresh").addEventListener("click", run);
+document.getElementById("filter").addEventListener("input", () => render(lastArticles));
+document.getElementById("days").addEventListener("change", showOrSearch);
+document.getElementById("full").addEventListener("change", showOrSearch);
+showOrSearch();
+</script>
+
+</body>
+</html>
