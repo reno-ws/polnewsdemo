@@ -143,6 +143,16 @@
   .reset-btn:hover { background: var(--red); color: var(--white); }
   .reset-btn:disabled { background: var(--grey-100); color: var(--grey-300); border-color: var(--grey-300); }
 
+  /* GIF, das beim Abstimmen nach oben schwebt */
+  .float-gif { position: fixed; z-index: 55; pointer-events: none; border-radius: var(--radius);
+    box-shadow: 0 6px 24px rgba(0,0,0,.35); animation: floatup var(--dur, 2.5s) ease-out forwards; }
+  @keyframes floatup {
+    0%   { opacity: 0; transform: translateY(10px) scale(.8); }
+    12%  { opacity: 1; transform: translateY(0) scale(1); }
+    75%  { opacity: 1; }
+    100% { opacity: 0; transform: translateY(-90px) scale(1); }
+  }
+
   /* Meldung (Toast) und Bild beim Klauen */
   .toast { position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%); background: var(--black); color: var(--white);
     padding: 10px 18px; border-radius: var(--radius); font-size: 14px; z-index: 60; box-shadow: var(--shadow); max-width: 90vw; }
@@ -316,6 +326,12 @@ const STEAL_IMAGE_SECONDS = 3;           // so lange bleibt das Bild sichtbar
 const RESET_IMAGE = "gifs/f-bi-raid.gif";    // GIF, das beim Zurücksetzen erscheint (liegt im Repository)
 const RESET_IMAGE_SECONDS = 5;           // so lange bleibt das GIF sichtbar
 
+// GIFs beim Abstimmen (News- und Team-Ranking-Tab)
+const UPVOTE_IMAGE = "gifs/Eyt8eq.gif";               // beim Klick auf ▲
+const DOWNVOTE_IMAGE = "gifs/yougotthis-beyonce.gif"; // beim Klick auf ▼
+const VOTE_GIF_SECONDS = 2.5;                         // so lange schwebt das GIF nach oben
+const VOTE_GIF_WIDTH = 150;                           // Breite in Pixel
+
 // So lange wartet die Suche maximal (Sekunden)
 const DEADLINE_SECONDS = 15;
 
@@ -416,7 +432,7 @@ async function startFirebase() {
 }
 
 // Stimme abgeben: +1 oder -1. Nochmals klicken nimmt die Stimme zurück.
-async function vote(a, value) {
+async function vote(a, value, button) {
   if (!db || !myId) return;
   if (!myName()) {
     alert("Bitte oben rechts zuerst Ihren Namen eingeben.");
@@ -425,6 +441,7 @@ async function vote(a, value) {
   }
   const id = articleId(a);
   const remove = myVote(id) === value;
+  const rect = button ? button.getBoundingClientRect() : null;   // Position merken, bevor die Liste neu gezeichnet wird
   try {
     await setDoc(doc(db, "votes", id), {
       title: a.title,
@@ -435,6 +452,7 @@ async function vote(a, value) {
       votes: { [myId]: remove ? deleteField() : value },
       names: { [myId]: remove ? deleteField() : myName() }
     }, { merge: true });
+    if (!remove && rect) floatGif(value > 0 ? UPVOTE_IMAGE : DOWNVOTE_IMAGE, rect);   // nur bei neuer Stimme, nicht beim Zurücknehmen
   } catch (e) {
     showNote("Stimme konnte nicht gespeichert werden: " + e.message);
   }
@@ -458,8 +476,8 @@ function voteBox(a) {
   down.textContent = "▼";
   down.title = "Nicht relevant";
   up.disabled = down.disabled = !(db && myId);
-  up.onclick = () => vote(a, 1);
-  down.onclick = () => vote(a, -1);
+  up.onclick = e => vote(a, 1, e.currentTarget);
+  down.onclick = e => vote(a, -1, e.currentTarget);
   box.append(up, score, down);
   return box;
 }
@@ -713,6 +731,25 @@ function findImage(name) {
 // Beim Start schon im Hintergrund laden, damit das Bild später sofort erscheint
 findImage(STEAL_IMAGE);
 findImage(RESET_IMAGE);
+findImage(UPVOTE_IMAGE);
+findImage(DOWNVOTE_IMAGE);
+
+// GIF über dem angeklickten Pfeil einblenden; es schwebt nach oben und verblasst
+async function floatGif(name, rect) {
+  const src = await findImage(name);
+  if (!src) return;                                   // Datei nicht gefunden: still überspringen
+  const img = document.createElement("img");
+  img.className = "float-gif";
+  img.src = src;
+  img.alt = "";
+  img.style.width = VOTE_GIF_WIDTH + "px";
+  img.style.setProperty("--dur", VOTE_GIF_SECONDS + "s");
+  const left = Math.min(Math.max(8, rect.left + rect.width / 2 - VOTE_GIF_WIDTH / 2), window.innerWidth - VOTE_GIF_WIDTH - 8);
+  img.style.left = left + "px";
+  img.style.bottom = Math.max(8, window.innerHeight - rect.top + 6) + "px";   // direkt über dem Pfeil
+  document.body.append(img);
+  setTimeout(() => img.remove(), VOTE_GIF_SECONDS * 1000 + 100);
+}
 
 // Bild oder GIF gross einblenden (nur für die Person, die die Aktion auslöst)
 async function showOverlay(name, text, seconds) {
