@@ -31,6 +31,12 @@
       <option value="7">Letzte 7 Tage</option>
     </select>
   </label>
+  <label>Umfang:
+    <select id="mode">
+      <option value="quick">Schnell (nur Hauptbegriffe)</option>
+      <option value="full">Vollständig (alle Begriffe)</option>
+    </select>
+  </label>
   <button id="refresh">Aktualisieren</button>
 </div>
 
@@ -57,16 +63,18 @@ async function loadConfig() {
 }
 
 // 2) Suchanfragen bilden
-function buildQueries() {
+// "Schnell": nur die Hauptbegriffe (2-3 Suchen). "Vollständig": zusätzlich alle Kontextbegriffe.
+function buildQueries(mode) {
   const queries = [];
   const direct = config.direct_terms.map(t => '"' + t + '"');
   for (let i = 0; i < direct.length; i += 6) {
     queries.push(direct.slice(i, i + 6).join(" OR "));
   }
-  // Kontextbegriffe in kleineren Gruppen (3), weil diese Suchen viele Treffer liefern
-  const context = config.context_terms.map(t => '"' + t + '"');
-  for (let i = 0; i < context.length; i += 3) {
-    queries.push(config.context_word + " (" + context.slice(i, i + 3).join(" OR ") + ")");
+  if (mode === "full") {
+    const context = config.context_terms.map(t => '"' + t + '"');
+    for (let i = 0; i < context.length; i += 3) {
+      queries.push(config.context_word + " (" + context.slice(i, i + 3).join(" OR ") + ")");
+    }
   }
   return queries;
 }
@@ -115,7 +123,7 @@ function isPriority(article) {
 function render(articles) {
   const results = document.getElementById("results");
   results.innerHTML = "";
-  const list = [...articles.values()].sort((a, b) =>
+  const list = [...articles].sort((a, b) =>
     (isPriority(b) - isPriority(a)) || (b.date - a.date));
 
   for (const a of list) {
@@ -155,8 +163,53 @@ async function fetchWithRetry(query, days) {
   }
 }
 
-// 6) Alle Suchen ausführen; Treffer erscheinen sofort, sobald sie da sind
+// 6) Zwischenspeicher: Ergebnisse im Browser merken, damit die Seite sofort etwas zeigt
+const CACHE_MAX_AGE_MS = 60 * 60 * 1000;  // 1 Stunde
+
+function cacheKey(mode, days) {
+  return "newsmonitor_" + mode + "_" + days;
+}
+
+function loadCache(mode, days) {
+  try {
+    const data = JSON.parse(localStorage.getItem(cacheKey(mode, days)));
+    if (!data) return null;
+    data.articles.forEach(a => a.date = new Date(a.date));
+    return data;
+  } catch (e) {
+    return null;
+  }
+}
+
+function saveCache(mode, days, articles) {
+  localStorage.setItem(cacheKey(mode, days),
+    JSON.stringify({ time: Date.now(), articles: articles }));
+}
+
+function showStatus(count, time, failedCount, total, fromCache) {
+  document.getElementById("status").textContent =
+    count + " Artikel · Stand " + new Date(time).toLocaleString("de-CH") +
+    (fromCache ? " (gespeichert)" : "") + " · ★ = Prioritätsquelle" +
+    (failedCount ? " · ⚠ " + failedCount + " von " + total + " Suchen fehlgeschlagen" : "");
+}
+
+// 7) Gespeicherte Ergebnisse zeigen; nur neu suchen, wenn nötig
+function showOrSearch() {
+  const mode = document.getElementById("mode").value;
+  const days = Number(document.getElementById("days").value);
+  const cached = loadCache(mode, days);
+  if (cached && Date.now() - cached.time < CACHE_MAX_AGE_MS) {
+    document.getElementById("failed").textContent = "";
+    render(cached.articles);
+    showStatus(cached.articles.length, cached.time, 0, 0, true);
+  } else {
+    run();
+  }
+}
+
+// 8) Suchen ausführen; Treffer erscheinen sofort, sobald sie da sind
 async function run() {
+  const mode = document.getElementById("mode").value;
   const days = Number(document.getElementById("days").value);
   const status = document.getElementById("status");
   const button = document.getElementById("refresh");
@@ -165,6 +218,36 @@ async function run() {
   failedBox.textContent = "";
   button.disabled = true;
 
-  const queries = buildQueries();
+  const queries = buildQueries(mode);
   const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
-  const
+  const articles = new Map();
+  const failed = [];
+  let done = 0, next = 0;
+
+  status.textContent = "Suche läuft … (0 von " + queries.length + " fertig)";
+
+  async function worker() {
+    while (next < queries.length) {
+      const q = queries[next++];
+      try {
+        for (const a of await fetchWithRetry(q, days)) {
+          if (a.date.getTime() >= cutoff && !articles.has(a.title)) {
+            articles.set(a.title, a);
+          }
+        }
+      } catch (e) {
+        failed.push(q);
+      }
+      done++;
+      render(articles.values());
+      status.textContent = "Suche läuft … (" + done + " von " + queries.length + " fertig) · " +
+        articles.size + " Artikel bisher";
+    }
+  }
+
+  await Promise.all(Array.from({ length: PARALLEL }, worker));
+
+  const list = [...articles.values()];
+  if (failed.length === 0) saveCache(mode, days, list);
+  showStatus(list.length, Date.now(), failed.length, queries.length, false);
+  if (list.length === 0) document.getElementById("results").textContent = "Keine 
