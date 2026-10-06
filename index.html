@@ -93,6 +93,9 @@
   .card-body:hover .card-title { color: var(--red-dark); }
   .empty { background: var(--white); border-radius: var(--radius); padding: 28px; text-align: center; color: var(--grey-600); }
   #failed { color: var(--red-dark); font-size: 13px; margin-top: 18px; }
+  .diag { margin-top: 18px; font-size: 12px; color: var(--grey-600); }
+  .diag summary { cursor: pointer; }
+  .diag pre { background: var(--white); border-radius: var(--radius); padding: 12px; white-space: pre-wrap; word-break: break-all; }
 
   /* Abstimmen */
   .vote { display: flex; flex-direction: column; align-items: center; width: 44px; flex-shrink: 0; }
@@ -192,6 +195,7 @@
     <div id="status" class="status">Lade …</div>
     <div id="results"></div>
     <div id="failed"></div>
+    <details id="diag" class="diag hidden"><summary>Diagnose (technische Details)</summary><pre id="diagText"></pre></details>
   </section>
 
   <!-- ===== Ansicht 2: Team-Ranking ===== -->
@@ -451,9 +455,9 @@ function realUrl(bingLink) {
 
 async function fetchQuery(q, signal) {
   const response = await fetch(WORKER_URL + "?q=" + encodeURIComponent(q), { signal });
-  if (!response.ok) throw new Error("HTTP " + response.status);
   const text = await response.text();
-  if (!text.includes("<rss")) throw new Error("Keine gültige Antwort");
+  if (!response.ok) throw new Error("HTTP " + response.status + " – " + text.slice(0, 120));
+  if (!text.includes("<rss")) throw new Error("Keine gültige Antwort: " + text.slice(0, 120));
   const xml = new DOMParser().parseFromString(text, "text/xml");
   return [...xml.getElementsByTagName("item")].map(item => {
     const link = realUrl(item.getElementsByTagName("link")[0]?.textContent || "");
@@ -723,7 +727,7 @@ document.querySelectorAll(".tab").forEach(tab => tab.addEventListener("click", (
 
 // Gespeichert werden immer alle Treffer; der Zeitraum wird erst bei der Anzeige gefiltert
 function cacheKey() {
-  return "newsmonitor_bing_" + $("full").checked;
+  return "newsmonitor_bing2_" + $("full").checked;
 }
 
 function showStatus(time, failedCount, total, fromCache) {
@@ -761,7 +765,7 @@ async function run() {
   const button = $("refresh");
   const status = $("status");
   const articles = new Map();
-  const failed = [];
+  const report = [];          // pro Suche: Anzahl Treffer oder Fehler
   let done = 0;
 
   const previous = loadCache();
@@ -774,35 +778,59 @@ async function run() {
   const timer = setTimeout(() => controller.abort(), DEADLINE_SECONDS * 1000);
 
   await Promise.all(queries.map(async q => {
+    let lastError = null;
     // Bei Fehler einmal kurz erneut versuchen
     for (let attempt = 1; attempt <= 2; attempt++) {
       try {
-        for (const a of await fetchQuery(q, controller.signal)) {
-          if (!articles.has(a.link)) articles.set(a.link, a);
-        }
+        const found = await fetchQuery(q, controller.signal);
+        for (const a of found) if (!articles.has(a.link)) articles.set(a.link, a);
+        report.push({ q, count: found.length, error: null });
+        lastError = null;
         break;
       } catch (e) {
-        if (attempt === 2 || controller.signal.aborted) { failed.push(q); break; }
+        lastError = e.name === "AbortError" ? "Zeitlimit erreicht" : e.message;
+        if (controller.signal.aborted) break;
         await new Promise(r => setTimeout(r, 800));
       }
     }
+    if (lastError) report.push({ q, count: 0, error: lastError });
     done++;
     if (articles.size > 0 || !previous) render(articles.values());
     status.textContent = "Suche läuft … (" + done + " von " + queries.length + " fertig)";
   }));
   clearTimeout(timer);
 
+  const failed = report.filter(r => r.error);
   const list = [...articles.values()];
-  if (list.length > 0 || failed.length === 0) {
+
+  if (failed.length === 0 && list.length > 0) {
+    // Alles hat geklappt: neue Ergebnisse anzeigen und speichern
     localStorage.setItem(cacheKey(), JSON.stringify({ time: Date.now(), articles: list }));
     render(list);
+    showStatus(Date.now(), 0, queries.length, false);
+  } else if (list.length > 0) {
+    // Teilweise Antwort: anzeigen, aber einen guten Zwischenspeicher nicht damit überschreiben
+    render(list);
+    if (!previous) localStorage.setItem(cacheKey(), JSON.stringify({ time: Date.now(), articles: list }));
+    showStatus(Date.now(), failed.length, queries.length, false);
   } else if (previous) {
-    render(previous.articles);  // Suche fehlgeschlagen: alte Ergebnisse behalten
+    // Gar keine Antwort: alte Ergebnisse zeigen, aber deutlich als alt kennzeichnen
+    render(previous.articles);
+    status.className = "status warn";
+    status.textContent = "Keine neuen Ergebnisse erhalten – gezeigt werden die gespeicherten Artikel vom " +
+      new Date(previous.time).toLocaleString("de-CH", { dateStyle: "short", timeStyle: "short" }) + ".";
+  } else {
+    render([]);
+    showStatus(Date.now(), failed.length, queries.length, false);
   }
-  showStatus(Date.now(), failed.length, queries.length, false);
+
   if (failed.length) {
-    $("failed").textContent = "Ohne Antwort (nochmals «Aktualisieren» klicken): " + failed.join("  |  ");
+    $("failed").textContent = failed.length + " von " + queries.length + " Suchen ohne Antwort. Details siehe «Diagnose» unten.";
   }
+  // Diagnose: pro Suche Treffer oder Fehlermeldung
+  $("diagText").textContent = report.map(r =>
+    (r.error ? "FEHLER  " : r.count + " Treffer  ") + r.q + (r.error ? "\n        → " + r.error : "")).join("\n");
+  $("diag").classList.remove("hidden");
   button.disabled = false;
 }
 
