@@ -679,25 +679,73 @@ function cooldownLeft() {
   return Math.max(0, left);
 }
 
+// Mögliche Orte einer Bilddatei: im Hauptordner oder in üblichen Unterordnern,
+// jeweils auch mit grossgeschriebener Endung (GitHub Pages unterscheidet Gross-/Kleinschreibung)
+function imageCandidates(name) {
+  const dot = name.lastIndexOf(".");
+  const names = [name];
+  if (dot > 0) names.push(name.slice(0, dot) + name.slice(dot).toUpperCase());
+  const folders = ["", "bilder/", "images/", "img/", "gifs/", "assets/", "media/"];
+  const out = [];
+  for (const f of folders) for (const n of names) out.push(f + n);
+  return out;
+}
+
+// Lädt der Reihe nach alle Kandidaten und liefert den ersten, der existiert (sonst null)
+const imageCache = {};
+function findImage(name) {
+  if (!imageCache[name]) {
+    imageCache[name] = (async () => {
+      for (const src of imageCandidates(name)) {
+        const ok = await new Promise(resolve => {
+          const im = new Image();
+          im.onload = () => resolve(true);
+          im.onerror = () => resolve(false);
+          im.src = src;
+        });
+        if (ok) return src;
+      }
+      return null;
+    })();
+  }
+  return imageCache[name];
+}
+// Beim Start schon im Hintergrund laden, damit das Bild später sofort erscheint
+findImage(STEAL_IMAGE);
+findImage(RESET_IMAGE);
+
 // Bild oder GIF gross einblenden (nur für die Person, die die Aktion auslöst)
-function showOverlay(src, text, seconds) {
+async function showOverlay(name, text, seconds) {
+  const src = await findImage(name);
   const overlay = document.createElement("div");
   overlay.className = "steal-overlay";
-  const img = document.createElement("img");
-  img.src = src;
-  img.alt = "";
-  img.onerror = () => { img.remove(); };          // Datei nicht gefunden: nur Text zeigen
+  if (src) {
+    const img = document.createElement("img");
+    img.src = src;
+    img.alt = "";
+    overlay.append(img);
+  }
   const cap = document.createElement("div");
   cap.className = "cap";
   cap.textContent = text;
+  overlay.append(cap);
+  if (!src) {
+    // Bild nicht gefunden: deutlich sagen, wo gesucht wurde
+    const warn = document.createElement("div");
+    warn.className = "sub";
+    warn.style.color = "#ffb3b8";
+    warn.textContent = "Bild «" + name + "» nicht gefunden. Gesucht unter: " +
+      new URL(name, location.href).href + " (und in den Ordnern bilder/, images/, img/, gifs/, assets/, media/)";
+    overlay.append(warn);
+  }
   const sub = document.createElement("div");
   sub.className = "sub";
   sub.textContent = "Zum Schliessen klicken";
-  overlay.append(img, cap, sub);
+  overlay.append(sub);
   const close = () => overlay.remove();
   overlay.onclick = close;
   document.body.append(overlay);
-  setTimeout(close, seconds * 1000);
+  setTimeout(close, (src ? seconds : Math.max(seconds, 10)) * 1000);
 }
 
 async function steal(victim) {
