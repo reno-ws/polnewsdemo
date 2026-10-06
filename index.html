@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Medienmonitoring</title>
+<style>
+  body { font-family: Arial, sans-serif; max-width: 860px; margin: 40px auto; padding: 0 16px; color: #222; }
+  h1 { font-size: 24px; margin-bottom: 4px; }
+  .bar { display: flex; gap: 10px; align-items: center; margin: 16px 0; flex-wrap: wrap; }
+  select, button { font-size: 14px; padding: 6px 10px; }
+  button { background: #1a3e8c; color: white; border: none; border-radius: 4px; cursor: pointer; }
+  #status { color: #666; font-size: 14px; margin-bottom: 16px; }
+  .item { padding: 12px 14px; border-bottom: 1px solid #eee; }
+  .item.prio { background: #f5f7ff; }
+  .item a { font-size: 16px; color: #1a3e8c; text-decoration: none; }
+  .item a:hover { text-decoration: underline; }
+  .meta { color: #777; font-size: 13px; margin-top: 4px; }
+</style>
+</head>
+<body>
+
+<h1 id="title">Medienmonitoring</h1>
+
+<div class="bar">
+  <label>Zeitraum:
+    <select id="days">
+      <option value="1">Letzte 24 Stunden</option>
+      <option value="3">Letzte 3 Tage</option>
+      <option value="7">Letzte 7 Tage</option>
+    </select>
+  </label>
+  <button id="refresh">Aktualisieren</button>
+</div>
+
+<div id="status">Lade …</div>
+<div id="results"></div>
+
+<script>
+// Hilfsdienste ("Proxys"), über die der Browser Google News abrufen darf.
+// Fällt einer aus, wird automatisch der nächste versucht.
+const PROXIES = [
+  url => "https://api.allorigins.win/raw?url=" + encodeURIComponent(url),
+  url => "https://api.codetabs.com/v1/proxy?quest=" + encodeURIComponent(url)
+];
+
+let config = null;
+
+// 1) Einstellungen aus config.json laden
+async function loadConfig() {
+  const response = await fetch("config.json", { cache: "no-store" });
+  config = await response.json();
+  document.getElementById("title").textContent = "Medienmonitoring " + config.organisation;
+  document.title = "Medienmonitoring " + config.organisation;
+  document.getElementById("days").value = String(config.days_back);
+}
+
+// 2) Suchanfragen bilden (je max. 6 Begriffe pro Anfrage)
+function buildQueries() {
+  const queries = [];
+  const direct = config.direct_terms.map(t => '"' + t + '"');
+  for (let i = 0; i < direct.length; i += 6) {
+    queries.push(direct.slice(i, i + 6).join(" OR "));
+  }
+  const context = config.context_terms.map(t => '"' + t + '"');
+  for (let i = 0; i < context.length; i += 6) {
+    queries.push(config.context_word + " (" + context.slice(i, i + 6).join(" OR ") + ")");
+  }
+  return queries;
+}
+
+// 3) Eine Suchanfrage bei Google News Schweiz ausführen
+async function fetchQuery(query, days) {
+  const url = "https://news.google.com/rss/search?q=" +
+    encodeURIComponent(query + " when:" + days + "d") + "&hl=de&gl=CH&ceid=CH:de";
+  for (const proxy of PROXIES) {
+    try {
+      const response = await fetch(proxy(url));
+      if (!response.ok) continue;
+      const xml = new DOMParser().parseFromString(await response.text(), "text/xml");
+      return [...xml.querySelectorAll("item")].map(item => {
+        const source = item.querySelector("source");
+        return {
+          title: item.querySelector("title")?.textContent || "",
+          link: item.querySelector("link")?.textContent || "",
+          date: new Date(item.querySelector("pubDate")?.textContent),
+          source: source ? source.textContent : "",
+          sourceUrl: source ? source.getAttribute("url") || "" : ""
+        };
+      });
+    } catch (e) {
+      // nächsten Proxy versuchen
+    }
+  }
+  throw new Error("Keine Verbindung");
+}
+
+function isPriority(article) {
+  return config.priority_sources.some(p => article.sourceUrl.includes(p));
+}
+
+// 4) Alles zusammen: suchen, filtern, sortieren, anzeigen
+async function run() {
+  const days = Number(document.getElementById("days").value);
+  const status = document.getElementById("status");
+  const results = document.getElementById("results");
+  results.innerHTML = "";
+
+  const queries = buildQueries();
+  const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
+  const articles = new Map();
+  let errors = 0;
+
+  for (let i = 0; i < queries.length; i++) {
+    status.textContent = "Suche läuft … (" + (i + 1) + " von " + queries.length + ")";
+    try {
+      for (const a of await fetchQuery(queries[i], days)) {
+        if (a.date.getTime() >= cutoff && !articles.has(a.title)) {
+          articles.set(a.title, a);
+        }
+      }
+    } catch (e) {
+      errors++;
+    }
+  }
+
+  const list = [...articles.values()].sort((a, b) =>
+    (isPriority(b) - isPriority(a)) || (b.date - a.date));
+
+  const now = new Date().toLocaleString("de-CH");
+  status.textContent = list.length + " Artikel gefunden · Stand " + now + " · ★ = Prioritätsquelle" +
+    (errors ? " · ⚠ " + errors + " von " + queries.length + " Suchen fehlgeschlagen" : "");
+
+  if (list.length === 0) {
+    results.textContent = "Keine Artikel gefunden.";
+    return;
+  }
+
+  for (const a of list) {
+    const div = document.createElement("div");
+    div.className = "item" + (isPriority(a) ? " prio" : "");
+
+    const link = document.createElement("a");
+    link.href = a.link;
+    link.target = "_blank";
+    link.textContent = a.title;
+
+    const meta = document.createElement("div");
+    meta.className = "meta";
+    meta.textContent = (isPriority(a) ? "★ " : "") + a.source + " · " +
+      a.date.toLocaleString("de-CH", { dateStyle: "short", timeStyle: "short" });
+
+    div.append(link, meta);
+    results.append(div);
+  }
+}
+
+document.getElementById("refresh").addEventListener("click", run);
+loadConfig().then(run).catch(() => {
+  document.getElementById("status").textContent = "Fehler: config.json konnte nicht geladen werden.";
+});
+</script>
+
+</body>
+</html>
