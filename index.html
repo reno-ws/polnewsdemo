@@ -208,7 +208,7 @@ window.addEventListener("unhandledrejection", e => { window.__errors.push(String
 // =====================================================================
 // EINSTELLUNGEN – hier Suchbegriffe und Quellen anpassen
 // =====================================================================
-const APP_VERSION = "3.0";                 // wird im Footer angezeigt: so sieht man, welche Datei live ist
+const APP_VERSION = "3.1";                 // wird im Footer angezeigt: so sieht man, welche Datei live ist
 const FEATURES = { gifReactions: true };   // false = GIFs aus, alles andere bleibt unverändert
 const CONFIG = {
   organisation: "Stadt Winterthur",
@@ -292,6 +292,9 @@ function safeUrl(u) {
     return (x.protocol === "http:" || x.protocol === "https:") ? x.href : "#";
   } catch (e) { return "#"; }
 }
+
+// Diagnose der letzten Suche (wird bei 0 Treffern angezeigt)
+const DIAG = { raw: 0, dropped: 0, sample: "" };
 
 const $ = id => document.getElementById(id);
 $("ver").textContent = "Version " + APP_VERSION;
@@ -550,7 +553,10 @@ async function fetchQuery(q, signal) {
   const text = await response.text();
   if (!text.includes("<rss")) throw new Error("Keine gültige Antwort");
   const xml = new DOMParser().parseFromString(text, "text/xml");
-  return [...xml.getElementsByTagName("item")].map(item => {
+  const rawItems = [...xml.getElementsByTagName("item")];
+  DIAG.raw += rawItems.length;
+  if (!DIAG.sample) DIAG.sample = text.replace(/\s+/g, " ").slice(0, 300);
+  const parsed = rawItems.map(item => {
     const link = realUrl(item.getElementsByTagName("link")[0]?.textContent || "");
     let host = "";
     try { host = new URL(link).hostname; } catch (e) {}
@@ -561,7 +567,10 @@ async function fetchQuery(q, signal) {
       source: item.getElementsByTagName("News:Source")[0]?.textContent || host,
       sourceUrl: host
     };
-  }).filter(a => a.title && !isNaN(a.date.getTime()));   // Treffer ohne Titel/gültiges Datum können nicht angezeigt oder bewertet werden
+  });
+  const valid = parsed.filter(a => a.title && !isNaN(a.date.getTime()));   // ohne Titel/gültiges Datum nicht anzeig- oder bewertbar
+  DIAG.dropped += parsed.length - valid.length;
+  return valid;
 }
 
 function isPriority(a) {
@@ -763,6 +772,7 @@ async function run() {
   const articles = new Map();
   const failed = [];
   let done = 0;
+  DIAG.raw = 0; DIAG.dropped = 0; DIAG.sample = "";
 
   const previous = loadCache();
   button.disabled = true;
@@ -770,27 +780,40 @@ async function run() {
   status.className = "status busy";
   status.textContent = "Suche läuft …";
 
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), DEADLINE_SECONDS * 1000);
+  let total = queries.length;
+  let usedFallback = false;
 
-  await Promise.all(queries.map(async q => {
-    // Bei Fehler einmal kurz erneut versuchen
-    for (let attempt = 1; attempt <= 2; attempt++) {
-      try {
-        for (const a of await fetchQuery(q, controller.signal)) {
-          if (!articles.has(a.link)) articles.set(a.link, a);
+  // Führt eine Gruppe von Suchen parallel aus (mit Zeitlimit und einem erneuten Versuch pro Suche)
+  async function runBatch(qs) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), DEADLINE_SECONDS * 1000);
+    await Promise.all(qs.map(async q => {
+      for (let attempt = 1; attempt <= 2; attempt++) {
+        try {
+          for (const a of await fetchQuery(q, controller.signal)) {
+            if (!articles.has(a.link)) articles.set(a.link, a);
+          }
+          break;
+        } catch (e) {
+          if (attempt === 2 || controller.signal.aborted) { failed.push(q); break; }
+          await new Promise(r => setTimeout(r, 800));
         }
-        break;
-      } catch (e) {
-        if (attempt === 2 || controller.signal.aborted) { failed.push(q); break; }
-        await new Promise(r => setTimeout(r, 800));
       }
-    }
-    done++;
-    if (articles.size > 0 || !previous) render(articles.values());
-    status.textContent = "Suche läuft … (" + done + " von " + queries.length + " fertig)";
-  }));
-  clearTimeout(timer);
+      done++;
+      if (articles.size > 0 || !previous) render(articles.values());
+      status.textContent = (usedFallback ? "Ersatzsuche läuft … (" : "Suche läuft … (") + done + " von " + total + " fertig)";
+    }));
+    clearTimeout(timer);
+  }
+
+  await runBatch(queries);
+
+  // Ersatzsuche: Liefern die genauen Suchen (mit Anführungszeichen und OR) gar nichts, versuchen wir einfache Suchbegriffe
+  if (articles.size === 0) {
+    const simple = CONFIG.direct_terms.slice(0, 5).concat([CONFIG.context_word]);
+    usedFallback = true; total = simple.length; done = 0; failed.length = 0;
+    await runBatch(simple);
+  }
 
   const list = [...articles.values()];
   if (list.length > 0) {
@@ -801,9 +824,14 @@ async function run() {
   } else {
     render([]);
   }
-  showStatus(Date.now(), failed.length, queries.length, false);
+  showStatus(Date.now(), failed.length, total, false);
+  if (usedFallback && list.length > 0) {
+    status.textContent += " · Ersatzsuche mit einfachen Suchbegriffen (die genauen Suchen lieferten 0 Treffer)";
+  }
   if (list.length === 0 && failed.length === 0) {
-    $("failed").textContent = "Hinweis: Alle " + queries.length + " Suchen wurden vom Worker beantwortet, enthielten aber 0 Treffer.";
+    $("failed").textContent = "Hinweis: Alle Suchen (inkl. Ersatzsuche) wurden beantwortet. Einträge insgesamt: " + DIAG.raw +
+      ", davon unbrauchbar (ohne Titel oder Datum): " + DIAG.dropped +
+      (DIAG.raw === 0 ? ". Anfang der Worker-Antwort: " + DIAG.sample : ".");
   }
   if (failed.length) {
     $("failed").textContent = "Ohne Antwort (nochmals «Aktualisieren» klicken): " + failed.join("  |  ");
