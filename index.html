@@ -38,7 +38,6 @@
 
 <script>
 // Hilfsdienste ("Proxys"), über die der Browser Google News abrufen darf.
-// Fällt einer aus, wird automatisch der nächste versucht.
 const PROXIES = [
   url => "https://api.allorigins.win/raw?url=" + encodeURIComponent(url),
   url => "https://api.codetabs.com/v1/proxy?quest=" + encodeURIComponent(url)
@@ -69,72 +68,52 @@ function buildQueries() {
   return queries;
 }
 
-// 3) Eine Suchanfrage bei Google News Schweiz ausführen
+// 3) Eine Suchanfrage bei Google News Schweiz ausführen.
+// Alle Proxys werden gleichzeitig gefragt; die schnellste Antwort gewinnt.
+// Nach 10 Sekunden wird abgebrochen, damit nichts ewig hängt.
+const TIMEOUT_MS = 10000;
+
+async function fetchViaProxy(proxy, url) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  try {
+    const response = await fetch(proxy(url), { signal: controller.signal });
+    if (!response.ok) throw new Error("HTTP " + response.status);
+    const text = await response.text();
+    if (!text.includes("<rss")) throw new Error("Keine gültige Antwort");
+    return text;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function fetchQuery(query, days) {
   const url = "https://news.google.com/rss/search?q=" +
     encodeURIComponent(query + " when:" + days + "d") + "&hl=de&gl=CH&ceid=CH:de";
-  for (const proxy of PROXIES) {
-    try {
-      const response = await fetch(proxy(url));
-      if (!response.ok) continue;
-      const xml = new DOMParser().parseFromString(await response.text(), "text/xml");
-      return [...xml.querySelectorAll("item")].map(item => {
-        const source = item.querySelector("source");
-        return {
-          title: item.querySelector("title")?.textContent || "",
-          link: item.querySelector("link")?.textContent || "",
-          date: new Date(item.querySelector("pubDate")?.textContent),
-          source: source ? source.textContent : "",
-          sourceUrl: source ? source.getAttribute("url") || "" : ""
-        };
-      });
-    } catch (e) {
-      // nächsten Proxy versuchen
-    }
-  }
-  throw new Error("Keine Verbindung");
+  const text = await Promise.any(PROXIES.map(p => fetchViaProxy(p, url)));
+  const xml = new DOMParser().parseFromString(text, "text/xml");
+  return [...xml.querySelectorAll("item")].map(item => {
+    const source = item.querySelector("source");
+    return {
+      title: item.querySelector("title")?.textContent || "",
+      link: item.querySelector("link")?.textContent || "",
+      date: new Date(item.querySelector("pubDate")?.textContent),
+      source: source ? source.textContent : "",
+      sourceUrl: source ? source.getAttribute("url") || "" : ""
+    };
+  });
 }
 
 function isPriority(article) {
   return config.priority_sources.some(p => article.sourceUrl.includes(p));
 }
 
-// 4) Alles zusammen: suchen, filtern, sortieren, anzeigen
-async function run() {
-  const days = Number(document.getElementById("days").value);
-  const status = document.getElementById("status");
+// 4) Ergebnisliste anzeigen
+function render(articles) {
   const results = document.getElementById("results");
   results.innerHTML = "";
-
-  const queries = buildQueries();
-  const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
-  const articles = new Map();
-  let errors = 0;
-
-  for (let i = 0; i < queries.length; i++) {
-    status.textContent = "Suche läuft … (" + (i + 1) + " von " + queries.length + ")";
-    try {
-      for (const a of await fetchQuery(queries[i], days)) {
-        if (a.date.getTime() >= cutoff && !articles.has(a.title)) {
-          articles.set(a.title, a);
-        }
-      }
-    } catch (e) {
-      errors++;
-    }
-  }
-
   const list = [...articles.values()].sort((a, b) =>
     (isPriority(b) - isPriority(a)) || (b.date - a.date));
-
-  const now = new Date().toLocaleString("de-CH");
-  status.textContent = list.length + " Artikel gefunden · Stand " + now + " · ★ = Prioritätsquelle" +
-    (errors ? " · ⚠ " + errors + " von " + queries.length + " Suchen fehlgeschlagen" : "");
-
-  if (list.length === 0) {
-    results.textContent = "Keine Artikel gefunden.";
-    return;
-  }
 
   for (const a of list) {
     const div = document.createElement("div");
@@ -153,6 +132,46 @@ async function run() {
     div.append(link, meta);
     results.append(div);
   }
+  return list.length;
+}
+
+// 5) Alle Suchen gleichzeitig starten; Treffer erscheinen sofort, sobald sie da sind
+async function run() {
+  const days = Number(document.getElementById("days").value);
+  const status = document.getElementById("status");
+  const button = document.getElementById("refresh");
+  document.getElementById("results").innerHTML = "";
+  button.disabled = true;
+
+  const queries = buildQueries();
+  const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
+  const articles = new Map();
+  let done = 0, errors = 0, count = 0;
+
+  status.textContent = "Suche läuft … (0 von " + queries.length + " fertig)";
+
+  await Promise.all(queries.map(async q => {
+    try {
+      for (const a of await fetchQuery(q, days)) {
+        if (a.date.getTime() >= cutoff && !articles.has(a.title)) {
+          articles.set(a.title, a);
+        }
+      }
+    } catch (e) {
+      errors++;
+      console.warn("Suche fehlgeschlagen:", q, e);
+    }
+    done++;
+    count = render(articles);
+    status.textContent = "Suche läuft … (" + done + " von " + queries.length + " fertig) · " +
+      count + " Artikel bisher";
+  }));
+
+  const now = new Date().toLocaleString("de-CH");
+  status.textContent = count + " Artikel gefunden · Stand " + now + " · ★ = Prioritätsquelle" +
+    (errors ? " · ⚠ " + errors + " von " + queries.length + " Suchen fehlgeschlagen" : "");
+  if (count === 0) document.getElementById("results").textContent = "Keine Artikel gefunden.";
+  button.disabled = false;
 }
 
 document.getElementById("refresh").addEventListener("click", run);
